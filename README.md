@@ -1,10 +1,5 @@
-<!DOCTYPE html>
-<html>
-  <head>
-    <title>Video Maker Script</title>
-  </head>
   <body>
-    <h1>Video Maker Script</h1>
+    <h1>FrameFusion</h1>
     <p>This is a Python script that creates a video from a set of images and adds a random audio clip to each video.</p>
     <h2>Getting Started</h2>
     <p>To use this script, you'll need to have Python 3.x installed on your system along with the following libraries:</p>
@@ -12,13 +7,11 @@
       <li>cv2</li>
       <li>numpy</li>
       <li>glob</li>
-      <li>audio</li>
       <li>random</li>
-      <li>combine</li>
       <li>moviepy</li>
     </ul>
     <p>You can install these libraries using the following command:</p>
-    <pre><code>pip install opencv-python numpy glob3 pydub random combine moviepy</code></pre>
+    <pre><code>pip install opencv-python numpy glob3 pydub random  moviepy</code></pre>
     <h2>Usage</h2>
     <ol>
       <li>Clone or download the script to your computer.</li>
@@ -38,4 +31,3 @@
     <h2>License</h2>
     <p>This script is licensed under the MIT License. Feel free to modify and use it for your own projects.</p>
   </body>
-</html>

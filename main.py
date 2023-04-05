@@ -3,7 +3,6 @@ import numpy as np
 import glob
 import audio
 import random
-import combine
 from moviepy.editor import *
 
 # Set the directory you want to list
@@ -31,12 +30,22 @@ for folder in folders:
     img_files = glob.glob(folder+'*.png')
     random.shuffle(img_files)
 
+    # Load the audio file
+    a = len(glob.glob('audio/*.mp3')) - 1
+    fileaudio = glob.glob('audio/*.mp3')[random.randint(0,a)]
+    audio = AudioFileClip(fileaudio)
+
+    
+    # Calculate the duration of each image
+    image_duration = audio.duration / len(img_files)
+    
     for filename in img_files:
         # Read the image file and append it to the list
         img = cv2.imread(filename)
         height, width, layers = img.shape
         size = (width,height)
-        img_array.append(img)
+        img_clip = ImageClip(filename).set_duration(image_duration)
+        img_array.append(img_clip)
 
     # Create a video writer object
     out = cv2.VideoWriter('project.avi',cv2.VideoWriter_fourcc(*'DIVX'), 1, size)
@@ -50,21 +59,6 @@ for folder in folders:
 
     # Load the video and audio files
     video = VideoFileClip("project.avi")
-    a= len(glob.glob('audio/*.mp3')) - 1
-    fileaudio = glob.glob('audio/*.mp3')[random.randint(0,a)]
-    audio = AudioFileClip(fileaudio)
-
-    # Increase the video's fps by 2
-    # video = video.speedx(2) 
-
-    # Set the duration of the video
-    video.duration = len(img_array) / video.fps
-
-    # Check if the audio and video have the same duration
-    if audio.duration > video.duration:
-        audio = audio.subclip(0, video.duration)
-    else:
-        video = video.subclip(0, audio.duration)
 
     # Check audio and video duration
     print(f"Audio duration: {audio.duration}")
