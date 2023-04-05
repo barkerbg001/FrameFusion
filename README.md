@@ -18,7 +18,7 @@
       <li>Add your images to the "images" folder. The script reads all PNG files in each subfolder of the "images" folder and creates a video for each subfolder.</li>
       <li>Add your audio files to the "audio" folder. The script selects a random audio file from this folder and adds it to the video.</li>
       <li>Run the script using the following command:</li>
-      <pre><code>python video_maker.py</code></pre>
+      <pre><code>python main.py</code></pre>
       <li>The script will create a video for each subfolder in the "images" folder and save it in the "output" folder.</li>
     </ol>
     <h2>Customization</h2>
