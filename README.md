@@ -23,9 +23,6 @@
     </ol>
     <h2>Customization</h2>
     <ul>
-      <li>If you want to change the frame rate of the video, you can modify the value in line 33 of the script.</li>
-      <li>If you want to change the codec of the video, you can modify the four-character code in line 34 of the script.</li>
-      <li>If you want to change the output format of the video, you can modify the file extension in line 56 of the script.</li>
       <li>If you want to add more image or audio files, simply add them to the "images" or "audio" folder, respectively.</li>
     </ul>
     <h2>License</h2>
