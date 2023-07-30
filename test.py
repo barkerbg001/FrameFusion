@@ -154,16 +154,14 @@ def get_image_orientation(folder_path):
     else:
         return 'portrait'
     
-def create_content(channelname, folders, output_path):
+def create_content(channelname, folders, output_path, type = "video"):
     for folder in folders:
-        orientation = get_image_orientation(folder)
-
-        if orientation == 'portrait':
+        if type != 'video':
             create_shorts(channelname, folder, output_path)
         else:
             create_videos(channelname, folder, output_path)
 
-def setup_channel(brandname):
+def setup_channel(brandname, type = "video"):
     channelname = f"{brandname}".strip()
     folders = []
 
@@ -184,7 +182,7 @@ def setup_channel(brandname):
 
     # Print the list of folders
     print(folders)
-    create_content(channelname, folders, output_path)
+    create_content(channelname, folders, output_path, type)
 
 class Channel(Static):
     """A channel widget."""
@@ -192,10 +190,7 @@ class Channel(Static):
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Event handler called when a button is pressed."""
-        if event.button.id == "video":
-            setup_channel(self.id)
-        elif event.button.id == "stop":
-            self.remove_class("started")
+        setup_channel(self.id, event.button.id)
 
     def compose(self) -> ComposeResult:
         """Create child widgets of a channel."""
