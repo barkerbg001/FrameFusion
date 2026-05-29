@@ -4,3 +4,5 @@ moviepy>=2.0.0,<3
 python-dotenv
 opencv-python-headless
 python-multipart
+arq
+redis

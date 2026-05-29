@@ -7,7 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import CORS_ORIGINS, OUTPUT_DIR, UPLOADS_DIR, ensure_directories
 from app.core.errors import register_exception_handlers
 from app.core.request_logging import RequestLoggingMiddleware
-from app.routers import batch, lofi, shorts, slideshow
+from app.jobs import store
+from app.jobs.queue import close_arq_pool
+from app.routers import batch, jobs, lofi, shorts, slideshow
 
 logging.basicConfig()
 logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
@@ -18,7 +20,9 @@ logging.getLogger("app.request").setLevel(logging.INFO)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_directories()
+    store.init_db()
     yield
+    await close_arq_pool()
 
 
 app = FastAPI(
@@ -38,6 +42,7 @@ app.add_middleware(
 )
 app.add_middleware(RequestLoggingMiddleware)
 
+app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
 app.include_router(lofi.router, prefix="/api/lofi", tags=["Lofi"])
 app.include_router(slideshow.router, prefix="/api/slideshow", tags=["Slideshow"])
 app.include_router(shorts.router, prefix="/api/shorts", tags=["Shorts"])

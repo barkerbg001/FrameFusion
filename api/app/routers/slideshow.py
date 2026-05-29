@@ -1,22 +1,15 @@
-import os
+from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
 
-from fastapi import APIRouter, File, Form, UploadFile
-from fastapi.responses import FileResponse
-
-from app.core.upload_helpers import (
-    make_temp_workspace,
-    persist_uploaded_audio,
-    persist_uploaded_images,
-    run_video_generation,
-    safe_filename,
-)
-from app.services.slideshow import create_slideshow
+from app.core.upload_helpers import safe_filename
+from app.jobs.models import JobCreateResponse
+from app.jobs.submit import submit_slideshow_job
 
 router = APIRouter()
 
 
-@router.post("/generate", response_class=FileResponse)
+@router.post("/generate", status_code=202, response_model=JobCreateResponse)
 async def generate_slideshow(
+    background_tasks: BackgroundTasks,
     images: list[UploadFile] = File(...),
     audio: UploadFile = File(...),
     output_name: str = Form("slideshow.mp4"),
@@ -24,29 +17,11 @@ async def generate_slideshow(
     orientation: str = Form("landscape"),
 ):
     output_name = safe_filename(output_name, "slideshow.mp4")
-    workspace, cleanup = make_temp_workspace()
-
-    image_paths = await persist_uploaded_images(workspace, images)
-    audio_path = await persist_uploaded_audio(workspace, audio)
-
-    output_dir = os.path.join(workspace, "output")
-    os.makedirs(output_dir, exist_ok=True)
-
-    video_path = run_video_generation(
-        lambda: create_slideshow(
-            image_paths=image_paths,
-            audio_path=audio_path,
-            output_path=output_dir,
-            output_name=output_name,
-            fps=fps,
-            orientation=orientation,
-        ),
-        log_message="Slideshow generation failed",
-    )
-
-    return FileResponse(
-        video_path,
-        media_type="video/mp4",
-        filename=output_name,
-        background=cleanup,
+    return await submit_slideshow_job(
+        images=images,
+        audio=audio,
+        output_name=output_name,
+        fps=fps,
+        orientation=orientation,
+        background_tasks=background_tasks,
     )

@@ -44,8 +44,8 @@ Goal: reliable API core that you can call from any client.
 - [x] `POST /api/slideshow/generate` — images + audio + options (fps, resolution, orientation)
 - [x] `POST /api/shorts/generate` — images + optional audio + duration cap
 - [x] `POST /api/batch/channel` — brand name + folder structure + render type
-- [ ] `GET /api/jobs/{id}` — job status (after Phase 2 queue)
-- [ ] `GET /api/jobs/{id}/download` — fetch completed file
+- [x] `GET /api/jobs/{id}` — job status (after Phase 2 queue)
+- [x] `GET /api/jobs/{id}/download` — fetch completed file
 
 ### 1.4 Configuration and dependencies
 
@@ -70,15 +70,15 @@ Goal: long renders (60+ min lofi) do not block HTTP workers or time out.
 
 ### 2.1 Job queue
 
-- [ ] Choose queue backend: **Redis + Celery**, **RQ**, or **ARQ** (lighter)
-- [ ] Job model: `id`, `status` (queued/running/completed/failed), `progress`, `created_at`, `output_path`, `error`
-- [ ] Change generate endpoints to `202 Accepted` + `{ job_id }` instead of synchronous file response
-- [ ] Worker process: `celery -A app.worker worker` (or equivalent)
+- [x] Choose queue backend: **Redis + Celery**, **RQ**, or **ARQ** (lighter) — **ARQ** with inline fallback for dev/CI
+- [x] Job model: `id`, `status` (queued/running/completed/failed), `progress`, `created_at`, `output_path`, `error`
+- [x] Change generate endpoints to `202 Accepted` + `{ job_id }` instead of synchronous file response
+- [x] Worker process: `arq app.worker.settings.WorkerSettings` (or inline queue locally)
 - [ ] Progress callbacks during MoviePy encode (where supported)
 
 ### 2.2 Storage
 
-- [ ] Persist job metadata (SQLite for dev, Postgres for prod)
+- [x] Persist job metadata (SQLite for dev, Postgres for prod)
 - [ ] TTL cleanup for old uploads and outputs (cron or scheduled task)
 - [ ] Optional S3-compatible storage (MinIO locally, S3/R2 in prod) for multi-instance deploys
 
@@ -145,7 +145,7 @@ Goal: confidence to ship and accept contributions.
 
 - [x] `api/Dockerfile` — Python slim + FFmpeg
 - [x] `web/Dockerfile` — multi-stage build → nginx static
-- [x] `docker-compose.yml` — api + web (worker/redis deferred to Phase 2)
+- [x] `docker-compose.yml` — api + web + redis + worker
 - [x] Document `docker compose up` in README and `docs/DEPLOY.md`
 
 ### 4.4 Code quality
@@ -257,8 +257,8 @@ To ship faster, defer these until after v1:
 
 ## Immediate next steps (this week)
 
-1. Phase 2: async job queue + `GET /api/jobs/{id}` endpoints  
-2. Pin `requirements.txt` versions  
+1. Pin `requirements.txt` versions  
+2. TTL cleanup for old job workspaces and outputs
 
 ---
 

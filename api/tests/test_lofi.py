@@ -1,8 +1,11 @@
+import time
 from unittest.mock import patch
 
 import pytest
 from app.core import config
 from fastapi.testclient import TestClient
+
+from tests.conftest import wait_for_job
 
 
 def assert_api_error(
@@ -36,7 +39,7 @@ def test_generate_video_success(client: TestClient, test_image, test_audio, tmp_
     output_file.write_bytes(b"fake-video")
 
     with patch(
-        "app.routers.lofi.create_video_from_images_and_audio",
+        "app.jobs.tasks.create_video_from_images_and_audio",
         return_value=str(output_file),
     ) as mock_create:
         response = client.post(
@@ -51,10 +54,14 @@ def test_generate_video_success(client: TestClient, test_image, test_audio, tmp_
             },
         )
 
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "video/mp4"
-    assert response.content == b"fake-video"
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+    wait_for_job(client, job_id)
     mock_create.assert_called_once()
+
+    download = client.get(f"/api/jobs/{job_id}/download")
+    assert download.status_code == 200
+    assert download.content == b"fake-video"
 
 
 def test_generate_video_rejects_invalid_image_mime(
@@ -145,7 +152,7 @@ def test_generate_video_rejects_oversized_image(
 
 def test_generate_video_returns_safe_internal_error(client: TestClient, test_image, test_audio):
     with patch(
-        "app.routers.lofi.create_video_from_images_and_audio",
+        "app.jobs.tasks.create_video_from_images_and_audio",
         side_effect=RuntimeError("secret encoder failure"),
     ):
         response = client.post(
@@ -157,5 +164,17 @@ def test_generate_video_returns_safe_internal_error(client: TestClient, test_ima
             },
         )
 
-    error = assert_api_error(response, status=500, code="internal_error")
-    assert "secret encoder failure" not in error["message"]
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        status_response = client.get(f"/api/jobs/{job_id}")
+        payload = status_response.json()
+        if payload["status"] == "failed":
+            assert payload["error"] == "Video generation failed"
+            assert "secret encoder failure" not in (payload["error"] or "")
+            return
+        time.sleep(0.05)
+
+    pytest.fail("Expected job to fail")

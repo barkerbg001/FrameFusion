@@ -7,16 +7,48 @@ services:
     environment:
       UPLOADS_DIR: /app/uploads
       OUTPUT_DIR: /app/output
+      JOBS_DIR: /app/jobs
+      JOBS_DB_PATH: /app/jobs/jobs.db
       CORS_ORIGINS: http://localhost:8080,http://localhost:5173
+      JOB_QUEUE_BACKEND: arq
+      REDIS_URL: redis://redis:6379/0
     volumes:
       - api-uploads:/app/uploads
       - api-output:/app/output
+      - api-jobs:/app/jobs
+    depends_on:
+      redis:
+        condition: service_started
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 15s
+
+  worker:
+    build:
+      context: ./api
+    command: ["arq", "app.worker.settings.WorkerSettings"]
+    environment:
+      UPLOADS_DIR: /app/uploads
+      OUTPUT_DIR: /app/output
+      JOBS_DIR: /app/jobs
+      JOBS_DB_PATH: /app/jobs/jobs.db
+      JOB_QUEUE_BACKEND: arq
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - api-uploads:/app/uploads
+      - api-output:/app/output
+      - api-jobs:/app/jobs
+    depends_on:
+      redis:
+        condition: service_started
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
 
   web:
     build:
@@ -32,3 +64,4 @@ services:
 volumes:
   api-uploads:
   api-output:
+  api-jobs:

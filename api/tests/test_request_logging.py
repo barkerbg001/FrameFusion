@@ -5,6 +5,8 @@ import pytest
 from app.core.request_logging import CORRELATION_ID_HEADER
 from fastapi.testclient import TestClient
 
+from tests.conftest import wait_for_job
+
 
 def test_health_returns_correlation_id_header(client: TestClient):
     response = client.get("/health", headers={CORRELATION_ID_HEADER: "test-request-123"})
@@ -33,7 +35,7 @@ def test_request_logging_records_duration_and_output_size(
 
     with caplog.at_level(logging.INFO, logger="app.request"):
         with patch(
-            "app.routers.lofi.create_video_from_images_and_audio",
+            "app.jobs.tasks.create_video_from_images_and_audio",
             return_value=str(output_file),
         ):
             response = client.post(
@@ -45,8 +47,15 @@ def test_request_logging_records_duration_and_output_size(
                 },
             )
 
-    assert response.status_code == 200
-    assert response.content == b"0123456789"
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+    wait_for_job(client, job_id)
+
+    with caplog.at_level(logging.INFO, logger="app.request"):
+        download = client.get(f"/api/jobs/{job_id}/download")
+
+    assert download.status_code == 200
+    assert download.content == b"0123456789"
 
     completed_logs = [
         record
@@ -55,15 +64,15 @@ def test_request_logging_records_duration_and_output_size(
     ]
     assert completed_logs
 
-    lofi_log = next(
+    download_log = next(
         record
         for record in completed_logs
-        if record.path == "/api/lofi/generate-video"
+        if record.path == f"/api/jobs/{job_id}/download"
     )
 
-    assert lofi_log.correlation_id
-    assert lofi_log.duration_ms >= 0
-    assert lofi_log.output_size_bytes == len(response.content)
+    assert download_log.correlation_id
+    assert download_log.duration_ms >= 0
+    assert download_log.output_size_bytes == len(download.content)
 
 
 def test_request_logging_records_json_response_size(client: TestClient, caplog):

@@ -4,13 +4,15 @@ from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 
+from tests.conftest import wait_for_job
+
 
 def test_slideshow_generate_success(client: TestClient, test_image, test_audio, tmp_path):
     output_file = tmp_path / "slideshow.mp4"
     output_file.write_bytes(b"slideshow-video")
 
     with patch(
-        "app.routers.slideshow.create_slideshow",
+        "app.jobs.tasks.create_slideshow",
         return_value=str(output_file),
     ):
         response = client.post(
@@ -22,9 +24,13 @@ def test_slideshow_generate_success(client: TestClient, test_image, test_audio, 
             },
         )
 
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "video/mp4"
-    assert response.content == b"slideshow-video"
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+    wait_for_job(client, job_id)
+
+    download = client.get(f"/api/jobs/{job_id}/download")
+    assert download.status_code == 200
+    assert download.content == b"slideshow-video"
 
 
 def test_shorts_generate_success(client: TestClient, test_image, tmp_path):
@@ -32,7 +38,7 @@ def test_shorts_generate_success(client: TestClient, test_image, tmp_path):
     output_file.write_bytes(b"shorts-video")
 
     with patch(
-        "app.routers.shorts.create_shorts",
+        "app.jobs.tasks.create_shorts",
         return_value=str(output_file),
     ):
         response = client.post(
@@ -49,8 +55,12 @@ def test_shorts_generate_success(client: TestClient, test_image, tmp_path):
             },
         )
 
-    assert response.status_code == 200
-    assert response.content == b"shorts-video"
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+    wait_for_job(client, job_id)
+
+    download = client.get(f"/api/jobs/{job_id}/download")
+    assert download.content == b"shorts-video"
 
 
 def test_batch_channel_requires_audio_for_slideshow(client: TestClient, test_image):
@@ -79,7 +89,7 @@ def test_batch_channel_returns_zip(client: TestClient, test_image, test_audio, t
     video_file.write_bytes(b"clip-video")
 
     with patch(
-        "app.routers.batch.render_channel_batch",
+        "app.jobs.tasks.render_channel_batch",
         return_value=[str(video_file)],
     ):
         response = client.post(
@@ -90,6 +100,10 @@ def test_batch_channel_returns_zip(client: TestClient, test_image, test_audio, t
             },
         )
 
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "application/zip"
-    assert response.content.startswith(b"PK")
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+    wait_for_job(client, job_id)
+
+    download = client.get(f"/api/jobs/{job_id}/download")
+    assert download.status_code == 200
+    assert download.content.startswith(b"PK")

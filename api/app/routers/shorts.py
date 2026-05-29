@@ -1,22 +1,15 @@
-import os
+from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
 
-from fastapi import APIRouter, File, Form, UploadFile
-from fastapi.responses import FileResponse
-
-from app.core.upload_helpers import (
-    make_temp_workspace,
-    persist_uploaded_audio,
-    persist_uploaded_images,
-    run_video_generation,
-    safe_filename,
-)
-from app.services.shorts import create_shorts
+from app.core.upload_helpers import safe_filename
+from app.jobs.models import JobCreateResponse
+from app.jobs.submit import submit_shorts_job
 
 router = APIRouter()
 
 
-@router.post("/generate", response_class=FileResponse)
+@router.post("/generate", status_code=202, response_model=JobCreateResponse)
 async def generate_shorts(
+    background_tasks: BackgroundTasks,
     images: list[UploadFile] = File(...),
     audio: UploadFile | None = File(None),
     output_name: str = Form("shorts.mp4"),
@@ -27,34 +20,14 @@ async def generate_shorts(
     fps: int = Form(30),
 ):
     output_name = safe_filename(output_name, "shorts.mp4")
-    workspace, cleanup = make_temp_workspace()
-
-    image_paths = await persist_uploaded_images(workspace, images)
-    audio_path = None
-    if audio is not None and audio.filename:
-        audio_path = await persist_uploaded_audio(workspace, audio)
-
-    output_dir = os.path.join(workspace, "output")
-    os.makedirs(output_dir, exist_ok=True)
-
-    video_path = run_video_generation(
-        lambda: create_shorts(
-            image_paths=image_paths,
-            output_path=output_dir,
-            output_name=output_name,
-            audio_path=audio_path,
-            seconds_per_image=seconds_per_image,
-            orientation=orientation,
-            shuffle=shuffle,
-            max_duration_seconds=max_duration_seconds,
-            fps=fps,
-        ),
-        log_message="Shorts generation failed",
-    )
-
-    return FileResponse(
-        video_path,
-        media_type="video/mp4",
-        filename=output_name,
-        background=cleanup,
+    return await submit_shorts_job(
+        images=images,
+        audio=audio,
+        output_name=output_name,
+        seconds_per_image=seconds_per_image,
+        orientation=orientation,
+        shuffle=shuffle,
+        max_duration_seconds=max_duration_seconds,
+        fps=fps,
+        background_tasks=background_tasks,
     )
