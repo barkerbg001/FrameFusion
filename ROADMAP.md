@@ -1,149 +1,267 @@
 # FrameFusion Roadmap
 
-## Phase 1 — Core Engine
+This document is the master checklist for taking FrameFusion from its current prototype state to a complete, shippable product. Work through phases in order where possible; later phases can overlap once foundations are stable.
 
-**Goal:** Upload 10 images, click render, get an MP4.
-
-### Backend
-
-**Repo & app setup** ✅ *done*
-
-- [x] Monorepo layout — `api/` and `web/` at the root
-- [x] FastAPI app structure — `core/`, `models/`, `routers/`, `services/`
-- [x] Path config and runtime dirs — `api/uploads/`, `api/output/`
-- [x] Health check endpoint — `GET /health`
-- [x] Lofi video generator — `POST /api/lofi/generate-video`
-- [x] YouTube video downloader — `GET /api/youtube/download-video`
-
-**Project & media API**
-
-- [ ] `POST /project` — create a project (name, aspect ratio, fps, resolution)
-- [ ] `POST /project/{id}/media` — upload images/videos to a project
-- [ ] `GET /project/{id}/media` — list uploaded media (filename, duration, dimensions)
-
-**Rendering**
-
-- [ ] Basic video renderer — stitch images into video using MoviePy, no audio yet
-- [ ] `POST /project/{id}/render` — trigger a render job, return job ID
-- [ ] `GET /job/{id}/status` — poll render status (queued / processing / done / failed)
-- [ ] `GET /job/{id}/download` — download the finished MP4
-- [ ] Output format presets (16:9, 9:16, 1:1) with resolution options
-
-### Frontend
-
-- [ ] Simple file upload area (drag & drop multi-image)
-- [ ] Media grid showing uploaded files
-- [ ] Render button with job status polling
-- [ ] Download link when done
+**Legend:** `[x]` done · `[~]` partial · `[ ]` not started
 
 ---
 
-## Phase 2 — Timeline & Per-Slide Control
+## Current state (baseline)
 
-**Goal:** User has full control over sequence and timing before rendering.
-
-- [ ] Horizontal timeline component showing each slide as a draggable block
-- [ ] Reorder slides via drag & drop
-- [ ] Per-slide duration input (default 3s, editable)
-- [ ] Global duration setting (apply same duration to all)
-- [ ] Delete / duplicate individual slides
-- [ ] Slide thumbnail preview in timeline
-- [ ] Ken Burns effect toggle per slide (pan left, pan right, zoom in, zoom out)
-- [ ] Image fit options per slide (cover / contain / blur background)
-- [ ] Backend: accept slide config JSON in render payload
+- [x] FastAPI app skeleton with CORS and lifespan hooks
+- [x] Lofi video service (`create_video_from_images_and_audio`)
+- [x] `POST /api/lofi/generate-video` endpoint
+- [x] Configurable uploads/output directories
+- [x] React + Vite + TypeScript frontend scaffold
+- [x] Dependabot for npm and pip
+- [x] Root README (this file's companion)
+- [x] Frontend connected to API
+- [x] Tests, CI, Docker, deployment
 
 ---
 
-## Phase 3 — Audio
+## Phase 1 — Backend stabilization
 
-**Goal:** Upload images + pick a track + render = a proper video with audio.
+Goal: reliable API core that you can call from any client.
 
-- [ ] Upload your own audio track
-- [ ] Backend built-in royalty-free music library (10–20 tracks, categorised by mood: lofi, cinematic, upbeat, calm)
-- [ ] Music browser UI with play preview
-- [ ] Auto-trim audio to match total video duration
-- [ ] Global volume control
-- [ ] Fade in / fade out toggles
-- [ ] Beat sync toggle — auto-adjust slide durations to match audio BPM (via `librosa`)
-- [ ] Multi-track: background music + optional voiceover upload simultaneously
+### 1.1 Fix and harden existing endpoints
 
----
+- [x] Add input validation: file size limits, allowed MIME types (image/*, audio/*), max image count
+- [x] Return structured errors (`422` validation, `413` too large, `500` with safe messages)
+- [x] Add request logging (correlation id, duration, output size)
 
-## Phase 4 — Text, Overlays & Transitions
+### 1.2 Consolidate video services
 
-**Goal:** Videos look genuinely polished and on-brand.
+- [x] Implement video services in `api/app/services/`:
+  - [x] `slideshow.py` — multi-image + single audio, evenly timed frames
+  - [x] `shorts.py` — fast-cut portrait/landscape clips
+  - [x] `channel_batch.py` — scan folder tree and batch render
+- [x] Stop writing temp files to CWD — `video_creator` uses `tempfile`
+- [x] Unify on MoviePy 2.x API (audit deprecated `.set_duration`, `.set_audio`, etc.)
 
-- [ ] Text overlay editor per slide (add title, subtitle, caption)
-- [ ] Font, size, color, alignment, opacity controls
-- [ ] Animated text presets (fade in, slide up, typewriter)
-- [ ] Logo / watermark upload with position and opacity
-- [ ] Progress bar overlay option (renders as bottom strip)
-- [ ] Transition selector — apply globally or per slide
-- [ ] Transition types: fade, slide, zoom, wipe, glitch (start with 8 solid ones)
-- [ ] Image filter per slide: brightness, contrast, saturation, vignette
-- [ ] Color grade presets: warm, cool, cinematic, B&W, vintage
+### 1.3 New API routes
 
----
+- [x] `POST /api/slideshow/generate` — images + audio + options (fps, resolution, orientation)
+- [x] `POST /api/shorts/generate` — images + optional audio + duration cap
+- [x] `POST /api/batch/channel` — brand name + folder structure + render type
+- [ ] `GET /api/jobs/{id}` — job status (after Phase 2 queue)
+- [ ] `GET /api/jobs/{id}/download` — fetch completed file
 
-## Phase 5 — AI Features
+### 1.4 Configuration and dependencies
 
-**Goal:** User types a prompt and gets a finished video in under 2 minutes.
+- [x] Add `api/.env.example` with all supported variables
+- [ ] Pin versions in `requirements.txt` (e.g. `fastapi==0.115.x`)
+- [ ] Add missing deps: `pydantic-settings`, `python-magic` or `filetype`, `Pillow`, `requests`
+- [ ] Document FFmpeg version requirement in README
 
-- [ ] **AI Script Generator** — type a topic, get a voiceover script (Groq / Anthropic API)
-- [ ] **AI TTS Voiceover** — convert script to audio via ElevenLabs, auto-attach to project
-- [ ] **Auto-subtitles** — transcribe voiceover using Whisper, burn captions into video
-- [ ] **AI Image Search** — type a concept, fetch relevant images via Unsplash / Pexels API, add to project in one click
-- [ ] **Prompt-to-Video** — type a full concept ("lofi Tokyo study beats"), AI fetches images + picks music + assembles slide config and triggers render
-- [ ] **Smart Slide Timing** — AI analyses audio rhythm and suggests slide durations to match energy
-- [ ] **AI Thumbnail Generator** — extract best frame + overlay title text, export as PNG
+### 1.5 Security basics
 
----
+- [x] Restrict CORS to frontend origin(s) via env (`CORS_ORIGINS`)
+- [x] Sanitize filenames (no path traversal in `output_name`)
+- [ ] Rate limiting on expensive endpoints (e.g. `slowapi` or reverse proxy)
 
-## Phase 6 — Projects, Queue & UX
-
-**Goal:** Feels like a real app, not a demo.
-
-- [ ] Named projects with save/load
-- [ ] Project dashboard (list view, thumbnails, last edited)
-- [ ] Undo/redo stack
-- [ ] Duplicate project
-- [ ] Batch mode — queue multiple render jobs from different configs
-- [ ] Render queue UI with live progress bars
-- [ ] Low-res draft preview before final render
-- [ ] Auto-save
+**Phase 1 exit criteria:** All endpoints return correct responses; no legacy scripts required for core flows; OpenAPI docs accurate.
 
 ---
 
-## Phase 7 — Sharing & Publishing
+## Phase 2 — Async jobs and storage
 
-- [ ] Shareable preview link (video streamed from server, no download required)
-- [ ] Direct YouTube upload via OAuth
-- [ ] Copy embed code
-- [ ] QR code generator for sharing
-- [ ] Export as GIF option
-- [ ] Watermark-free toggle (free vs pro tier groundwork)
+Goal: long renders (60+ min lofi) do not block HTTP workers or time out.
+
+### 2.1 Job queue
+
+- [ ] Choose queue backend: **Redis + Celery**, **RQ**, or **ARQ** (lighter)
+- [ ] Job model: `id`, `status` (queued/running/completed/failed), `progress`, `created_at`, `output_path`, `error`
+- [ ] Change generate endpoints to `202 Accepted` + `{ job_id }` instead of synchronous file response
+- [ ] Worker process: `celery -A app.worker worker` (or equivalent)
+- [ ] Progress callbacks during MoviePy encode (where supported)
+
+### 2.2 Storage
+
+- [ ] Persist job metadata (SQLite for dev, Postgres for prod)
+- [ ] TTL cleanup for old uploads and outputs (cron or scheduled task)
+- [ ] Optional S3-compatible storage (MinIO locally, S3/R2 in prod) for multi-instance deploys
+
+### 2.3 Webhooks (optional)
+
+- [ ] `POST /api/jobs/{id}/webhook` config — notify client when render completes
+
+**Phase 2 exit criteria:** 60-minute lofi render can be queued from API and polled to completion without gateway timeout.
 
 ---
 
-## Phase 8 — Auth & SaaS Layer *(optional)*
+## Phase 3 — Frontend application
 
-- [ ] Google OAuth / email auth
-- [ ] Per-user project isolation
-- [ ] Credit system (free tier = watermark + 480p, pro = 1080p + AI features)
-- [ ] Usage dashboard
-- [ ] Public API with API key for programmatic access
+Goal: usable product UI replacing the Vite starter page.
+
+### 3.1 Foundation
+
+- [x] Rename package from `frontend` to `framefusion-web`
+- [ ] Add router (`react-router`), UI kit (shadcn/ui or similar), HTTP client (`fetch` wrapper or axios)
+- [ ] Env: `VITE_API_URL=http://localhost:8000`
+- [ ] Vite dev proxy to API (optional, for cookie auth later)
+
+### 3.2 Core pages
+
+- [ ] **Home / dashboard** — recent jobs, quick actions
+- [~] **Lofi creator** — drag-and-drop image + audio, duration slider, submit → download (sync; job progress in Phase 2)
+- [ ] **Slideshow creator** — multi-image upload, reorder, preview timing
+- [ ] **Shorts creator** — aspect ratio toggle (9:16 / 16:9), clip length
+- [ ] **Job detail** — status, logs, retry, download link
+- [ ] **Settings** — default output name, quality presets
+
+### 3.3 UX polish
+
+- [ ] Upload progress indicators
+- [ ] Error toasts with API error messages
+- [ ] Responsive layout (mobile-friendly uploads)
+- [ ] Dark theme fitting “lofi” aesthetic
+- [ ] Optional: audio waveform preview, image thumbnail grid
+
+**Phase 3 exit criteria:** Full lofi workflow completable in browser without curl; job status visible for async renders.
 
 ---
 
-## Build Order Summary
+## Phase 4 — Quality, testing, and DevOps
 
-| Phase | Focus | Delivers | Status |
-|-------|-------|----------|--------|
-| 1 | Core engine | Images → MP4 | 🔧 In progress |
-| 2 | Timeline control | Sequencing & timing | ⏳ Planned |
-| 3 | Audio | Music + beat sync | ⏳ Planned |
-| 4 | Text & transitions | Polished output | ⏳ Planned |
-| 5 | AI features | The differentiator | ⏳ Planned |
-| 6 | Projects & queue | Real app UX | ⏳ Planned |
-| 7 | Sharing | Distribution | ⏳ Planned |
-| 8 | Auth & SaaS | Monetisation | ⏳ Planned |
+Goal: confidence to ship and accept contributions.
+
+### 4.1 Testing
+
+- [x] **API unit tests** — pytest for `video_creator` (FFmpeg smoke test in CI)
+- [x] **API integration tests** — TestClient with generated fixture assets
+- [x] **Frontend tests** — Vitest + React Testing Library for App/API status
+- [ ] **E2E** — Playwright: upload → wait for job → download (CI with mocked or fast 5s render)
+
+### 4.2 CI/CD
+
+- [x] GitHub Actions workflow:
+  - [x] `api`: install deps, ruff, mypy, pytest
+  - [x] `web`: npm ci, lint, build, test
+- [x] Fail PR on lint/test errors
+- [x] Optional: build Docker images on `main`
+
+### 4.3 Containerization
+
+- [x] `api/Dockerfile` — Python slim + FFmpeg
+- [x] `web/Dockerfile` — multi-stage build → nginx static
+- [x] `docker-compose.yml` — api + web (worker/redis deferred to Phase 2)
+- [x] Document `docker compose up` in README and `docs/DEPLOY.md`
+
+### 4.4 Code quality
+
+- [x] `pyproject.toml` — ruff, mypy, pytest config
+- [x] Pre-commit hooks (format, lint)
+- [ ] Strict TypeScript (`strict: true` already; add API response types/codegen from OpenAPI)
+
+**Phase 4 exit criteria:** Green CI on every PR; one-command local stack via Docker Compose.
+
+---
+
+## Phase 5 — Production readiness
+
+Goal: safe, observable deployment for real users.
+
+### 5.1 Authentication and authorization
+
+- [ ] User accounts (email/OAuth) or API keys for programmatic access
+- [ ] Per-user upload quotas and job limits
+- [ ] Private job outputs — users can only access their own files
+
+### 5.2 Deployment
+
+- [x] Docker Compose local/production stack documented in `docs/DEPLOY.md`
+- [ ] Choose hosting: e.g. Railway, Fly.io, AWS ECS, or VPS + Docker
+- [ ] Separate worker tier from API tier
+- [ ] HTTPS, reverse proxy (Caddy/nginx), gzip
+- [ ] Environment-specific config (staging vs production)
+
+### 5.3 Observability
+
+- [ ] Structured logging (JSON)
+- [ ] Metrics: queue depth, render duration, failure rate
+- [ ] Error tracking (Sentry)
+- [ ] Health checks for load balancer (`/health` + worker/redis connectivity)
+
+### 5.4 Legal and product
+
+- [ ] Terms of service / acceptable use (user-supplied media rights)
+- [ ] Privacy policy if storing user uploads in cloud
+
+**Phase 5 exit criteria:** Deployed staging environment; authenticated user can create and download a video end-to-end.
+
+---
+
+## Phase 6 — Advanced features (post-MVP)
+
+Pick based on product direction; not required for “full project” v1.
+
+### 6.1 Richer video pipeline
+
+- [ ] Multi-image lofi with crossfade or Ken Burns motion
+- [ ] Text overlays (title, timestamp, “live” badge)
+- [ ] Video filters (grain, vignette, color grade presets)
+- [ ] Ambient loop video layer over still background
+- [ ] Normalize audio loudness (EBU R128 / `-14 LUFS` target)
+
+### 6.2 Integrations
+
+- [ ] Stock image/audio libraries (Unsplash, local royalty-free packs)
+- [ ] Template presets (“Rainy window lofi”, “Study beats 24/7”)
+
+### 6.3 Collaboration
+
+- [ ] Teams / shared workspaces
+- [ ] Asset library per channel (reuse uploads)
+- [ ] Scheduled renders (cron-style “publish every Monday”)
+
+### 6.4 Performance
+
+- [ ] GPU encoding (NVENC) when available
+- [ ] Render preview at low resolution before full export
+- [ ] Chunked/resumable uploads for large audio files
+
+---
+
+## Suggested timeline (solo developer)
+
+| Phase | Focus | Rough effort |
+|-------|--------|--------------|
+| 1 | Backend stabilization | 1–2 weeks |
+| 2 | Job queue + storage | 1–2 weeks |
+| 3 | Frontend | 2–3 weeks |
+| 4 | Tests + Docker + CI | 1 week |
+| 5 | Auth + deploy | 1–2 weeks |
+| 6 | Advanced features | ongoing |
+
+Total to **shippable v1**: about **6–10 weeks** part-time, depending on scope cuts.
+
+---
+
+## Recommended v1 scope (cut list)
+
+To ship faster, defer these until after v1:
+
+- Multi-user teams
+- GPU encoding
+
+**v1 must-haves:**
+
+1. Lofi + slideshow + shorts generation via API  
+2. Async jobs with progress polling  
+3. Web UI for upload and download  
+4. Docker Compose + CI  
+5. Basic auth or API keys + CORS lockdown  
+
+---
+
+## Immediate next steps (this week)
+
+1. Phase 2: async job queue + `GET /api/jobs/{id}` endpoints  
+2. Pin `requirements.txt` versions  
+
+---
+
+## Tracking
+
+Update checkboxes in this file as work completes. Link PRs in commit messages or a changelog when you start releasing versions (`v0.1.0`, `v1.0.0`).

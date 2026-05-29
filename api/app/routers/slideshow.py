@@ -10,46 +10,38 @@ from app.core.upload_helpers import (
     run_video_generation,
     safe_filename,
 )
-from app.services.shorts import create_shorts
+from app.services.slideshow import create_slideshow
 
 router = APIRouter()
 
 
 @router.post("/generate", response_class=FileResponse)
-async def generate_shorts(
+async def generate_slideshow(
     images: list[UploadFile] = File(...),
-    audio: UploadFile | None = File(None),
-    output_name: str = Form("shorts.mp4"),
-    seconds_per_image: float = Form(1.0),
-    orientation: str = Form("portrait"),
-    shuffle: bool = Form(True),
-    max_duration_seconds: float | None = Form(None),
+    audio: UploadFile = File(...),
+    output_name: str = Form("slideshow.mp4"),
     fps: int = Form(30),
+    orientation: str = Form("landscape"),
 ):
-    output_name = safe_filename(output_name, "shorts.mp4")
+    output_name = safe_filename(output_name, "slideshow.mp4")
     workspace, cleanup = make_temp_workspace()
 
     image_paths = await persist_uploaded_images(workspace, images)
-    audio_path = None
-    if audio is not None and audio.filename:
-        audio_path = await persist_uploaded_audio(workspace, audio)
+    audio_path = await persist_uploaded_audio(workspace, audio)
 
     output_dir = os.path.join(workspace, "output")
     os.makedirs(output_dir, exist_ok=True)
 
     video_path = run_video_generation(
-        lambda: create_shorts(
+        lambda: create_slideshow(
             image_paths=image_paths,
+            audio_path=audio_path,
             output_path=output_dir,
             output_name=output_name,
-            audio_path=audio_path,
-            seconds_per_image=seconds_per_image,
-            orientation=orientation,
-            shuffle=shuffle,
-            max_duration_seconds=max_duration_seconds,
             fps=fps,
+            orientation=orientation,
         ),
-        log_message="Shorts generation failed",
+        log_message="Slideshow generation failed",
     )
 
     return FileResponse(

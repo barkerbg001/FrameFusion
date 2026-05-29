@@ -1,46 +1,45 @@
+from __future__ import annotations
+
 import os
-import random
-import cv2
-from moviepy.editor import AudioFileClip, concatenate_audioclips, ImageClip
+
+from moviepy import ImageClip
+
+from app.services.media_utils import (
+    load_image_bgr,
+    loop_audio_to_duration,
+    resize_image,
+    resolve_resolution,
+    temp_image_file,
+    write_video_file,
+)
+
 
 def create_video_from_images_and_audio(
-    image_paths: list[str], 
-    audio_path: str, 
-    output_path: str, 
-    output_name: str, 
-    repeat_minutes: int
+    image_paths: list[str],
+    audio_path: str,
+    output_path: str,
+    output_name: str,
+    repeat_minutes: int,
+    target_duration_seconds: float | None = None,
 ) -> str:
-    from moviepy.editor import AudioFileClip, concatenate_audioclips, ImageClip
-    import cv2
-    import os
+    if not image_paths:
+        raise ValueError("At least one image is required")
 
-    original_audio = AudioFileClip(audio_path)
-    target_duration = repeat_minutes * 60
-    repeated = []
-    dur = 0
+    width, height = resolve_resolution("landscape")
+    target_duration = (
+        target_duration_seconds
+        if target_duration_seconds is not None
+        else repeat_minutes * 60
+    )
+    final_audio = loop_audio_to_duration(audio_path, target_duration)
 
-    while dur + original_audio.duration < target_duration:
-        repeated.append(original_audio.copy())
-        dur += original_audio.duration
-
-    if dur < target_duration:
-        repeated.append(original_audio.subclip(0, target_duration - dur))
-
-    final_audio = concatenate_audioclips(repeated)
-
-    image = cv2.imread(image_paths[0])
-    if image is None:
-        raise FileNotFoundError(f"Image not found: {image_paths[0]}")
-
-    resized_path = "resized_temp.jpg"
-    resized = cv2.resize(image, (1920, 1080))
-    cv2.imwrite(resized_path, resized)
-
-    video_clip = ImageClip(resized_path).set_duration(final_audio.duration).set_audio(final_audio).set_fps(30)
-
-    os.makedirs(output_path, exist_ok=True)
-    output_file = os.path.join(output_path, output_name)
-    video_clip.write_videofile(output_file, codec="libx264", audio_codec="aac")
-
-    os.remove(resized_path)
-    return output_file
+    image = resize_image(load_image_bgr(image_paths[0]), width, height)
+    with temp_image_file(image) as resized_path:
+        video_clip = (
+            ImageClip(resized_path)
+            .with_duration(final_audio.duration)
+            .with_audio(final_audio)
+            .with_fps(30)
+        )
+        output_file = os.path.join(output_path, output_name)
+        return write_video_file(video_clip, output_file, fps=30)
