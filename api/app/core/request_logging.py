@@ -3,6 +3,7 @@ import time
 import uuid
 from collections.abc import AsyncIterator
 from contextvars import ContextVar
+from typing import cast
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -46,7 +47,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
             raise
 
         response.headers[CORRELATION_ID_HEADER] = correlation_id
-        original_iterator = response.body_iterator
+        # BaseHTTPMiddleware wraps responses as _StreamingResponse (has body_iterator).
+        original_iterator = cast(
+            AsyncIterator[bytes],
+            cast(StreamingResponse, response).body_iterator,
+        )
 
         async def counted_body() -> AsyncIterator[bytes]:
             output_size_bytes = 0
