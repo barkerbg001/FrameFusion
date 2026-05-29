@@ -6,11 +6,14 @@
 
 ### Backend
 
-**Repo & app setup** *(done)*
+**Repo & app setup** ✅ *done*
 
 - [x] Monorepo layout — `api/` and `web/` at the root
 - [x] FastAPI app structure — `core/`, `models/`, `routers/`, `services/`
 - [x] Path config and runtime dirs — `api/uploads/`, `api/output/`
+- [x] Health check endpoint — `GET /health`
+- [x] Lofi video generator — `POST /api/lofi/generate-video`
+- [x] YouTube video downloader — `GET /api/youtube/download-video`
 
 **Project & media API**
 
@@ -32,7 +35,6 @@
 - [ ] Media grid showing uploaded files
 - [ ] Render button with job status polling
 - [ ] Download link when done
-- [ ] No design effort yet — just wiring
 
 ---
 
@@ -62,7 +64,7 @@
 - [ ] Auto-trim audio to match total video duration
 - [ ] Global volume control
 - [ ] Fade in / fade out toggles
-- [ ] Beat sync toggle — auto-adjust slide durations to match audio BPM (use librosa in FastAPI)
+- [ ] Beat sync toggle — auto-adjust slide durations to match audio BPM (via `librosa`)
 - [ ] Multi-track: background music + optional voiceover upload simultaneously
 
 ---
@@ -87,10 +89,10 @@
 
 **Goal:** User types a prompt and gets a finished video in under 2 minutes.
 
-- [ ] **AI Script Generator** — type a topic, get a voiceover script (Groq/Anthropic API)
+- [ ] **AI Script Generator** — type a topic, get a voiceover script (Groq / Anthropic API)
 - [ ] **AI TTS Voiceover** — convert script to audio via ElevenLabs, auto-attach to project
 - [ ] **Auto-subtitles** — transcribe voiceover using Whisper, burn captions into video
-- [ ] **AI Image Search** — type a concept, fetch relevant images via Unsplash/Pexels API, add to project in one click
+- [ ] **AI Image Search** — type a concept, fetch relevant images via Unsplash / Pexels API, add to project in one click
 - [ ] **Prompt-to-Video** — type a full concept ("lofi Tokyo study beats"), AI fetches images + picks music + assembles slide config and triggers render
 - [ ] **Smart Slide Timing** — AI analyses audio rhythm and suggests slide durations to match energy
 - [ ] **AI Thumbnail Generator** — extract best frame + overlay title text, export as PNG
@@ -123,7 +125,7 @@
 
 ---
 
-## Phase 8 — Auth & SaaS Layer (optional)
+## Phase 8 — Auth & SaaS Layer *(optional)*
 
 - [ ] Google OAuth / email auth
 - [ ] Per-user project isolation
@@ -133,15 +135,15 @@
 
 ---
 
-## Build order summary
+## Build Order Summary
 
-| Phase | Focus | Delivers |
-|-------|-------|----------|
-| 1 | Core engine | Images → MP4 |
-| 2 | Timeline control | Sequencing & timing |
-| 3 | Audio | Music + beat sync |
-| 4 | Text & transitions | Polished output |
-| 5 | AI features | The differentiator |
-| 6 | Projects & queue | Real app UX |
-| 7 | Sharing | Distribution |
-| 8 | Auth & SaaS | Monetisation |
+| Phase | Focus | Delivers | Status |
+|-------|-------|----------|--------|
+| 1 | Core engine | Images → MP4 | 🔧 In progress |
+| 2 | Timeline control | Sequencing & timing | ⏳ Planned |
+| 3 | Audio | Music + beat sync | ⏳ Planned |
+| 4 | Text & transitions | Polished output | ⏳ Planned |
+| 5 | AI features | The differentiator | ⏳ Planned |
+| 6 | Projects & queue | Real app UX | ⏳ Planned |
+| 7 | Sharing | Distribution | ⏳ Planned |
+| 8 | Auth & SaaS | Monetisation | ⏳ Planned |
