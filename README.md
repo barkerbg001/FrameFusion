@@ -6,9 +6,17 @@
 
 ```
 FrameFusion/
-├── api/               # FastAPI backend (entrypoint: main.py, requirements.txt inside)
-├── frontend/          # React frontend for interaction
-└── README.md
+├── api/               # FastAPI backend
+│   ├── app/
+│   │   ├── core/      # Config and shared settings
+│   │   ├── models/    # Pydantic schemas
+│   │   ├── routers/   # API route handlers
+│   │   ├── services/  # Business logic (rendering, etc.)
+│   │   └── main.py    # App entrypoint
+│   ├── uploads/       # Uploaded media (created at runtime, gitignored)
+│   ├── output/        # Rendered videos (created at runtime, gitignored)
+│   └── requirements.txt
+└── web/               # React frontend (Vite)
 ```
 
 ## 🎬 Features
@@ -32,38 +40,29 @@ cd api
 pip install -r requirements.txt
 ```
 
-Run the API:
+Run the API (from inside the `api` folder):
 
 ```bash
-uvicorn main:app --reload
+uvicorn app.main:app --reload
 ```
 
 ### 2. Frontend (React)
 
-Inside the `frontend` folder:
+Inside the `web` folder:
 
 ```bash
-cd ../frontend
+cd ../web
 npm install
 npm run dev
 ```
 
-## 📂 Folder Usage
-
-- `images/` — Subfolders represent video sources
-- `audio/` — Audio files randomly selected
-- `output/` — Output videos are saved here
-
 ## 🔁 Endpoints
 
-| Method | Endpoint   | Description                  |
-|--------|------------|------------------------------|
-| GET    | `/lofi`    | Generate lofi loop video     |
-| GET    | `/shorts`  | Generate vertical short      |
-| GET    | `/video`   | Generate standard video      |
-| GET    | `/youtube` | Generate YouTube-style video |
-
-Each endpoint uses similar logic with format-specific adjustments.
+| Method | Endpoint                      | Description              |
+|--------|-------------------------------|--------------------------|
+| GET    | `/health`                     | API health check         |
+| POST   | `/api/lofi/generate-video`    | Generate lofi loop video |
+| GET    | `/api/youtube/download-video` | Download YouTube video   |
 
 ## 🗺️ Roadmap
 
@@ -75,7 +74,7 @@ Get something that actually works end to end before any UI polish.
 
 #### Backend (FastAPI)
 
-- [ ] Project scaffolding with clean folder structure (`/api`, `/uploads`, `/output`)
+- [x] Project scaffolding with clean folder structure (`api/`, `web/`)
 - [ ] `POST /project` — create a project with name, aspect ratio, fps, resolution
 - [ ] `POST /project/{id}/media` — upload images/videos to a project
 - [ ] `GET /project/{id}/media` — list uploaded media with metadata (filename, duration, dimensions)

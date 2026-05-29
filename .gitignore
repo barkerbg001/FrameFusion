@@ -156,3 +156,9 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Runtime media inside api/ (keep folder structure)
+api/uploads/*
+!api/uploads/.gitkeep
+api/output/*
+!api/output/.gitkeep
