@@ -1,6 +1,8 @@
-from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
 
+from app.core.config import RATE_LIMIT_GENERATE
 from app.core.errors import AppError
+from app.core.rate_limit import GENERATE_SCOPE, limiter
 from app.core.upload_helpers import safe_filename
 from app.jobs.models import JobCreateResponse
 from app.jobs.submit import submit_batch_job
@@ -15,7 +17,9 @@ ZIP_CONTENT_TYPES = {
 
 
 @router.post("/channel", status_code=202, response_model=JobCreateResponse)
+@limiter.shared_limit(RATE_LIMIT_GENERATE, scope=GENERATE_SCOPE)
 async def batch_channel(
+    request: Request,
     background_tasks: BackgroundTasks,
     channel_archive: UploadFile = File(..., description="Zip of subfolders containing images"),
     brand_name: str = Form(...),

@@ -1,6 +1,6 @@
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, HttpUrl
 
 
 class JobStatus(StrEnum):
@@ -28,6 +28,7 @@ class JobRecord(BaseModel):
     media_type: str | None = None
     error: str | None = None
     workspace_path: str
+    webhook_url: str | None = None
     created_at: float
     updated_at: float
 
@@ -45,3 +46,18 @@ class JobStatusResponse(BaseModel):
     updated_at: float
     output_filename: str | None = None
     error: str | None = None
+
+
+class JobSummaryResponse(BaseModel):
+    id: str
+    job_type: JobType
+    status: JobStatus
+    progress: float
+    created_at: float
+    updated_at: float
+    output_filename: str | None = None
+    error: str | None = None
+
+
+class JobWebhookRequest(BaseModel):
+    url: HttpUrl

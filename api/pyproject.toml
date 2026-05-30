@@ -10,6 +10,7 @@ pythonpath = ["."]
 addopts = "-ra"
 markers = [
     "slow: marks tests that encode video with FFmpeg (deselect with '-m \"not slow\"')",
+    "rate_limit: marks tests that exercise slowapi rate limiting",
 ]
 
 [tool.ruff]

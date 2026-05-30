@@ -87,13 +87,25 @@ def write_video_file(
     *,
     fps: int = 30,
 ) -> str:
+    from app.jobs.progress import get_encode_progress_range, job_id_ctx, update_render_progress
+    from app.services.progress import EncodeProgressLogger
+
     os.makedirs(os.path.dirname(output_file) or ".", exist_ok=True)
+
+    logger: EncodeProgressLogger | None = None
+    if job_id_ctx.get() is not None:
+        progress_range = get_encode_progress_range()
+        logger = EncodeProgressLogger(
+            update_render_progress,
+            progress_range=progress_range,
+        )
+
     clip.write_videofile(
         output_file,
         codec="libx264",
         audio_codec="aac",
         fps=fps,
-        logger=None,
+        logger=logger,
     )
     return output_file
 

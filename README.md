@@ -44,10 +44,18 @@ Processing flow (lofi endpoint):
 
 - **Python 3.11+** (3.10 may work; test locally)
 - **Node.js 20+** and npm
-- **FFmpeg** on your PATH — required by MoviePy for encoding
+- **FFmpeg 4.4+** on your PATH — required by MoviePy for H.264/AAC encoding (**5.0+** recommended)
 - Enough disk space for uploads and rendered output (long lofi videos can be several GB)
 
 ### FFmpeg install
+
+FrameFusion uses MoviePy with the `libx264` video and `aac` audio codecs. Verify FFmpeg after install:
+
+```bash
+ffmpeg -version
+```
+
+Look for `ffmpeg version 4.4` or newer (Debian/Ubuntu packages and Docker images typically ship **5.x** or **6.x**). If `ffmpeg` is missing from PATH, video generation will fail at encode time.
 
 - **Windows:** `winget install Gyan.FFmpeg` or download from [ffmpeg.org](https://ffmpeg.org/download.html) and add `bin` to PATH.
 - **macOS:** `brew install ffmpeg`

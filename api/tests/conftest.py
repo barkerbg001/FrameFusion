@@ -19,6 +19,17 @@ def isolated_job_storage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     store.init_db()
 
 
+@pytest.fixture(autouse=True)
+def disable_rate_limits_by_default(request: pytest.FixtureRequest):
+    limiter = app.state.limiter
+    previous = limiter.enabled
+    if request.node.get_closest_marker("rate_limit") is None:
+        limiter.enabled = False
+    yield
+    limiter.enabled = previous
+    limiter.reset()
+
+
 @pytest.fixture
 def client() -> TestClient:
     return TestClient(app)

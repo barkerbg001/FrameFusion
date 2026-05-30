@@ -5,6 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from slowapi.errors import RateLimitExceeded
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.request_logging import get_correlation_id
@@ -64,6 +65,17 @@ def error_response(
 
 
 def register_exception_handlers(app: FastAPI) -> None:
+    @app.exception_handler(RateLimitExceeded)
+    async def handle_rate_limit_exceeded(
+        _request: Request,
+        _exc: RateLimitExceeded,
+    ) -> JSONResponse:
+        return error_response(
+            429,
+            "rate_limit_exceeded",
+            "Rate limit exceeded. Try again later.",
+        )
+
     @app.exception_handler(AppError)
     async def handle_app_error(_request: Request, exc: AppError) -> JSONResponse:
         return error_response(

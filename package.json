@@ -1,0 +1,25 @@
+{
+  "name": "framefusion",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "cd api && python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "dev:web": "npm --prefix web run dev",
+    "build": "npm --prefix web run build",
+    "test": "npm run test:api && npm run test:web",
+    "test:api": "cd api && pytest",
+    "test:web": "npm --prefix web test",
+    "test:e2e": "npm --prefix web run test:e2e",
+    "lint": "npm run lint:api && npm run lint:web",
+    "lint:api": "cd api && ruff check .",
+    "lint:web": "npm --prefix web run lint",
+    "typecheck:api": "cd api && mypy app",
+    "check:api": "npm run lint:api && npm run typecheck:api && npm run test:api",
+    "codegen:api": "cd api && python scripts/export_openapi.py && cd ../web && npm run codegen:api",
+    "docker:up": "docker compose up --build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

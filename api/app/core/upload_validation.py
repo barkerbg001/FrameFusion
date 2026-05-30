@@ -1,3 +1,4 @@
+import filetype
 from fastapi import UploadFile
 
 from app.core.errors import AppError
@@ -52,6 +53,27 @@ async def save_upload(
             status_code=422,
             code="empty_file",
             message=f"{field_name} is empty",
+        )
+
+    validate_file_content(dest_path, allowed_prefix, field_name)
+
+
+def validate_file_content(path: str, allowed_prefix: str, field_name: str) -> None:
+    kind = filetype.guess(path)
+    if kind is None:
+        raise AppError(
+            status_code=422,
+            code="invalid_media_type",
+            message=f"{field_name} has an unrecognized or unsupported file type",
+        )
+    if not kind.mime.startswith(f"{allowed_prefix}/"):
+        raise AppError(
+            status_code=422,
+            code="invalid_media_type",
+            message=(
+                f"{field_name} must be {allowed_prefix}/* "
+                f"(detected {kind.mime} from file contents)"
+            ),
         )
 
 

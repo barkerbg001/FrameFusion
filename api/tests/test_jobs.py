@@ -1,3 +1,4 @@
+import uuid
 from unittest.mock import patch
 
 from app.jobs import store
@@ -14,8 +15,9 @@ def test_get_job_not_found(client: TestClient):
 
 
 def test_download_job_not_ready(client: TestClient):
+    job_id = f"queued-job-{uuid.uuid4()}"
     job = store.create_job(
-        job_id="queued-job-download-test",
+        job_id=job_id,
         job_type=JobType.LOFI,
         workspace_path="/tmp/workspace",
         output_filename="output.mp4",
@@ -24,7 +26,7 @@ def test_download_job_not_ready(client: TestClient):
     )
     assert job.status == JobStatus.QUEUED
 
-    response = client.get("/api/jobs/queued-job-download-test/download")
+    response = client.get(f"/api/jobs/{job_id}/download")
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "job_not_ready"
 

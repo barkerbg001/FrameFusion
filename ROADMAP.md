@@ -50,15 +50,15 @@ Goal: reliable API core that you can call from any client.
 ### 1.4 Configuration and dependencies
 
 - [x] Add `api/.env.example` with all supported variables
-- [ ] Pin versions in `requirements.txt` (e.g. `fastapi==0.115.x`)
-- [ ] Add missing deps: `pydantic-settings`, `python-magic` or `filetype`, `Pillow`, `requests`
-- [ ] Document FFmpeg version requirement in README
+- [x] Pin versions in `requirements.txt` (e.g. `fastapi==0.115.x`)
+- [x] Add missing deps: `pydantic-settings`, `python-magic` or `filetype`, `Pillow`, `requests`
+- [x] Document FFmpeg version requirement in README
 
 ### 1.5 Security basics
 
 - [x] Restrict CORS to frontend origin(s) via env (`CORS_ORIGINS`)
 - [x] Sanitize filenames (no path traversal in `output_name`)
-- [ ] Rate limiting on expensive endpoints (e.g. `slowapi` or reverse proxy)
+- [x] Rate limiting on expensive endpoints (e.g. `slowapi` or reverse proxy)
 
 **Phase 1 exit criteria:** All endpoints return correct responses; no legacy scripts required for core flows; OpenAPI docs accurate.
 
@@ -74,17 +74,17 @@ Goal: long renders (60+ min lofi) do not block HTTP workers or time out.
 - [x] Job model: `id`, `status` (queued/running/completed/failed), `progress`, `created_at`, `output_path`, `error`
 - [x] Change generate endpoints to `202 Accepted` + `{ job_id }` instead of synchronous file response
 - [x] Worker process: `arq app.worker.settings.WorkerSettings` (or inline queue locally)
-- [ ] Progress callbacks during MoviePy encode (where supported)
+- [x] Progress callbacks during MoviePy encode (where supported)
 
 ### 2.2 Storage
 
 - [x] Persist job metadata (SQLite for dev, Postgres for prod)
-- [ ] TTL cleanup for old uploads and outputs (cron or scheduled task)
-- [ ] Optional S3-compatible storage (MinIO locally, S3/R2 in prod) for multi-instance deploys
+- [x] TTL cleanup for old uploads and outputs (cron or scheduled task)
+- [x] Optional S3-compatible storage (MinIO locally, S3/R2 in prod) for multi-instance deploys
 
 ### 2.3 Webhooks (optional)
 
-- [ ] `POST /api/jobs/{id}/webhook` config — notify client when render completes
+- [x] `POST /api/jobs/{id}/webhook` config — notify client when render completes
 
 **Phase 2 exit criteria:** 60-minute lofi render can be queued from API and polled to completion without gateway timeout.
 
@@ -97,28 +97,29 @@ Goal: usable product UI replacing the Vite starter page.
 ### 3.1 Foundation
 
 - [x] Rename package from `frontend` to `framefusion-web`
-- [ ] Add router (`react-router`), UI kit (shadcn/ui or similar), HTTP client (`fetch` wrapper or axios)
-- [ ] Env: `VITE_API_URL=http://localhost:8000`
-- [ ] Vite dev proxy to API (optional, for cookie auth later)
+- [x] Add router (`react-router`), UI kit (shadcn/ui or similar), HTTP client (`fetch` wrapper or axios)
+- [x] Env: `VITE_API_URL=http://localhost:8000`
+- [x] Vite dev proxy to API (optional, for cookie auth later)
 
 ### 3.2 Core pages
 
-- [ ] **Home / dashboard** — recent jobs, quick actions
-- [~] **Lofi creator** — drag-and-drop image + audio, duration slider, submit → download (sync; job progress in Phase 2)
-- [ ] **Slideshow creator** — multi-image upload, reorder, preview timing
-- [ ] **Shorts creator** — aspect ratio toggle (9:16 / 16:9), clip length
-- [ ] **Job detail** — status, logs, retry, download link
-- [ ] **Settings** — default output name, quality presets
+- [x] **Home / dashboard** — recent jobs, quick actions
+- [x] **Lofi creator** — drag-and-drop image + audio, duration slider, submit → download (sync; job progress in Phase 2)
+- [x] **Slideshow creator** — multi-image upload, reorder, preview timing
+- [x] **Shorts creator** — aspect ratio toggle (9:16 / 16:9), clip length
+- [~] **Job detail** — status, progress, webhook, download link (retry deferred)
+- [x] **Settings** — default output name, quality presets
 
 ### 3.3 UX polish
 
-- [ ] Upload progress indicators
-- [ ] Error toasts with API error messages
-- [ ] Responsive layout (mobile-friendly uploads)
-- [ ] Dark theme fitting “lofi” aesthetic
-- [ ] Optional: audio waveform preview, image thumbnail grid
+- [x] Upload progress indicators
+- [x] Error toasts with API error messages
+- [x] Responsive layout (mobile-friendly uploads)
+- [x] Dark theme fitting “lofi” aesthetic
+- [x] Optional: image thumbnail grid
+- [ ] Optional: audio waveform preview
 
-**Phase 3 exit criteria:** Full lofi workflow completable in browser without curl; job status visible for async renders.
+**Phase 3 exit criteria:** Full lofi workflow completable in browser without curl; job status visible for async renders. ✅
 
 ---
 
@@ -131,7 +132,7 @@ Goal: confidence to ship and accept contributions.
 - [x] **API unit tests** — pytest for `video_creator` (FFmpeg smoke test in CI)
 - [x] **API integration tests** — TestClient with generated fixture assets
 - [x] **Frontend tests** — Vitest + React Testing Library for App/API status
-- [ ] **E2E** — Playwright: upload → wait for job → download (CI with mocked or fast 5s render)
+- [x] **E2E** — Playwright: upload → wait for job → download (CI with mocked or fast 5s render)
 
 ### 4.2 CI/CD
 
@@ -152,7 +153,7 @@ Goal: confidence to ship and accept contributions.
 
 - [x] `pyproject.toml` — ruff, mypy, pytest config
 - [x] Pre-commit hooks (format, lint)
-- [ ] Strict TypeScript (`strict: true` already; add API response types/codegen from OpenAPI)
+- [x] Strict TypeScript (`strict: true` already; add API response types/codegen from OpenAPI)
 
 **Phase 4 exit criteria:** Green CI on every PR; one-command local stack via Docker Compose.
 
