@@ -1,7 +1,10 @@
 fastapi
 uvicorn
+google-genai
 moviepy
+pillow
 python-dotenv
 opencv-python-headless
 python-multipart
 pytube
+tzdata
