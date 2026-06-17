@@ -1,10 +1,16 @@
 from fastapi import APIRouter, HTTPException
 
+from app.agents.master_agent import MasterAgentError, run_master_agent
+from app.agents.producer_agent import ProducerAgentError, run_producer_agent
+from app.agents.researcher_agent import ResearcherAgentError, run_researcher_agent
 from app.agents.anime_researcher import AnimeAgentError, research_anime
 from app.agents.history_researcher import (
     HistoryAgentError,
     research_history,
 )
+from app.models.producer import ProducerReport, ProducerRequest
+from app.models.master import MasterAgentReport, MasterResearchRequest
+from app.models.researcher import ResearcherReport, ResearcherRequest
 from app.models.anime import AnimeResearchReport, AnimeResearchRequest
 from app.agents.pokemon_researcher import (
     PokemonAgentError,
@@ -36,6 +42,63 @@ from app.services.wikipedia_client import (
 
 
 router = APIRouter()
+
+
+@router.post(
+    "/research",
+    response_model=ResearcherReport,
+)
+def researcher_agent(request: ResearcherRequest) -> ResearcherReport:
+    try:
+        return ResearcherReport(
+            **run_researcher_agent(
+                task=request.task,
+                context=request.context,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ResearcherAgentError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post(
+    "/master",
+    response_model=MasterAgentReport,
+)
+def master_agent(request: MasterResearchRequest) -> MasterAgentReport:
+    try:
+        return MasterAgentReport(
+            **run_master_agent(
+                task=request.task,
+                context=request.context,
+                produce_short=request.produce_short,
+                short_format=request.short_format,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except MasterAgentError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post(
+    "/produce-short",
+    response_model=ProducerReport,
+)
+def producer_agent(request: ProducerRequest) -> ProducerReport:
+    try:
+        return ProducerReport(
+            **run_producer_agent(
+                script=request.script,
+                context=request.context,
+                short_format=request.short_format,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ProducerAgentError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.post(
