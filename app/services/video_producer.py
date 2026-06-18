@@ -87,8 +87,9 @@ def _build_result(
     duration_seconds: float,
     background_color: Optional[str] = None,
     narration_audio_path: Optional[str] = None,
+    pexels_background: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    return {
+    result = {
         "video_type": video_type,
         "output_path": str(output_path.resolve()),
         "output_name": output_name,
@@ -97,7 +98,17 @@ def _build_result(
         "duration_seconds": duration_seconds,
         "background_color": background_color,
         "narration_audio_path": narration_audio_path,
+        "background_source": None,
+        "background_media_type": None,
+        "background_photographer": None,
+        "background_query": None,
     }
+    if pexels_background:
+        result["background_source"] = "Pexels"
+        result["background_media_type"] = pexels_background.get("media_type")
+        result["background_photographer"] = pexels_background.get("photographer")
+        result["background_query"] = pexels_background.get("query")
+    return result
 
 
 def produce_text_short(
@@ -107,6 +118,7 @@ def produce_text_short(
     text_color: str,
     font_size: int,
     output_name: str,
+    pexels_background: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Create a silent 9:16 text short and return metadata about the output file."""
     normalized_text = _optional_text(text)
@@ -124,6 +136,12 @@ def produce_text_short(
         raise ValueError("font_size must be between 36 and 180")
 
     try:
+        background_media_path = None
+        background_media_type = None
+        if pexels_background:
+            background_media_path = pexels_background["local_path"]
+            background_media_type = pexels_background["media_type"]
+
         create_text_short(
             text=normalized_text,
             output_path=str(output_path),
@@ -131,6 +149,8 @@ def produce_text_short(
             background_color=selected_background,
             text_color=selected_text_color,
             font_size=font_size,
+            background_media_path=background_media_path,
+            background_media_type=background_media_type,
         )
     except Exception as exc:
         if output_path.exists():
@@ -145,6 +165,7 @@ def produce_text_short(
         output_name=validated_output_name,
         duration_seconds=duration_seconds,
         background_color=selected_background,
+        pexels_background=pexels_background,
     )
 
 
@@ -157,6 +178,7 @@ def produce_sound_short(
     text_color: str,
     font_size: int,
     output_name: str,
+    pexels_background: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Create a narrated 9:16 short with ElevenLabs audio and centered text."""
     normalized_text = _optional_text(text)
@@ -185,6 +207,12 @@ def produce_sound_short(
             model_id=selected_model_id,
             language_code=selected_language_code,
         )
+        background_media_path = None
+        background_media_type = None
+        if pexels_background:
+            background_media_path = pexels_background["local_path"]
+            background_media_type = pexels_background["media_type"]
+
         create_sound_short(
             text=normalized_text,
             audio_path=str(audio_path),
@@ -192,6 +220,8 @@ def produce_sound_short(
             background_color=selected_background,
             text_color=selected_text_color,
             font_size=font_size,
+            background_media_path=background_media_path,
+            background_media_type=background_media_type,
         )
     except ElevenLabsServiceError as exc:
         raise VideoProducerError(str(exc)) from exc
@@ -210,6 +240,7 @@ def produce_sound_short(
         output_name=validated_output_name,
         duration_seconds=duration_seconds,
         background_color=selected_background,
+        pexels_background=pexels_background,
     )
 
 
@@ -275,7 +306,11 @@ def estimate_text_short_duration(text: str) -> float:
     return min(60.0, max(5.0, word_count / 2.5))
 
 
-def produce_text_short_simple(text: str, output_name: str) -> Dict[str, Any]:
+def produce_text_short_simple(
+    text: str,
+    output_name: str,
+    pexels_background: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Create a silent short using project defaults."""
     return produce_text_short(
         text=text,
@@ -284,10 +319,15 @@ def produce_text_short_simple(text: str, output_name: str) -> Dict[str, Any]:
         text_color=DEFAULT_TEXT_COLOR,
         font_size=DEFAULT_FONT_SIZE,
         output_name=output_name,
+        pexels_background=pexels_background,
     )
 
 
-def produce_sound_short_simple(text: str, output_name: str) -> Dict[str, Any]:
+def produce_sound_short_simple(
+    text: str,
+    output_name: str,
+    pexels_background: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     """Create a narrated short using project defaults."""
     return produce_sound_short(
         text=text,
@@ -298,4 +338,5 @@ def produce_sound_short_simple(text: str, output_name: str) -> Dict[str, Any]:
         text_color=DEFAULT_TEXT_COLOR,
         font_size=DEFAULT_FONT_SIZE,
         output_name=output_name,
+        pexels_background=pexels_background,
     )

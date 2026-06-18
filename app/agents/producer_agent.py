@@ -13,6 +13,7 @@ from app.agents.base import (
 from app.models.producer import ProducerReport
 from app.models.video_tools import VideoProductionResult
 from app.services.output_filename import resolve_output_name
+from app.services.pexels_footage import PexelsFootageError, prepare_pexels_background
 from app.services.video_producer import (
     VideoProducerError,
     produce_sound_short_simple,
@@ -78,11 +79,32 @@ Return a concise rationale and any production limitations.
     return ProducerPlan.model_validate_json(response.text)
 
 
+def _footage_fallback_query(
+    script: str,
+    context: str | None,
+    visual_suggestions: list[str] | None,
+    source_text: str | None,
+) -> str:
+    if visual_suggestions:
+        for suggestion in visual_suggestions:
+            normalized = " ".join(suggestion.strip().split())
+            if len(normalized) >= 2:
+                return normalized
+    if context and context.strip():
+        return context.strip()
+    if source_text and source_text.strip():
+        return source_text.strip()
+    return script.strip()
+
+
 def run_producer_agent(
     script: str,
     context: str | None = None,
     short_format: ShortFormat = "auto",
     source_text: str | None = None,
+    recommended_media: list[dict[str, Any]] | None = None,
+    research_data: dict[str, Any] | None = None,
+    visual_suggestions: list[str] | None = None,
 ) -> Dict[str, Any]:
     """Render a short video from a script."""
     normalized_script = " ".join(script.strip().split())
@@ -125,22 +147,46 @@ def run_producer_agent(
             rationale = "Rendered as a silent text short."
             limitations = []
 
+        pexels_background = None
+        try:
+            pexels_background = prepare_pexels_background(
+                recommended_media=recommended_media,
+                research_data=research_data,
+                fallback_query=_footage_fallback_query(
+                    normalized_script,
+                    context,
+                    visual_suggestions,
+                    source_text or naming_source,
+                ),
+            )
+        except PexelsFootageError as exc:
+            limitations.append(f"Pexels background unavailable: {exc}")
+
         if selected_format == "text_short":
             video_result = produce_text_short_simple(
                 normalized_script,
                 resolved_output_name,
+                pexels_background=pexels_background,
             )
         else:
             video_result = produce_sound_short_simple(
                 normalized_script,
                 resolved_output_name,
+                pexels_background=pexels_background,
             )
 
         if selected_format == "sound_short" and not os.getenv("ELEVENLABS_API_KEY"):
             limitations.append("ElevenLabs narration requires ELEVENLABS_API_KEY.")
-        limitations.append(
-            "Background color and typography use FrameFusion defaults."
-        )
+        if pexels_background:
+            photographer = pexels_background.get("photographer") or "Unknown"
+            limitations.append(
+                f"Background footage from Pexels by {photographer}. "
+                "Credit the creator when publishing."
+            )
+        else:
+            limitations.append(
+                "Background color and typography use FrameFusion defaults."
+            )
 
         report = ProducerReport(
             script=normalized_script,
@@ -153,6 +199,7 @@ def run_producer_agent(
                 "requested_short_format": short_format,
                 "selected_short_format": selected_format,
                 "resolved_output_name": resolved_output_name,
+                "pexels_background": pexels_background,
                 "video_result": video_result,
             },
         )

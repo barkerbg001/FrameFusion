@@ -12,6 +12,10 @@ class VideoProductionResult(BaseModel):
     duration_seconds: float
     background_color: Optional[str] = None
     narration_audio_path: Optional[str] = None
+    background_source: Optional[str] = None
+    background_media_type: Optional[str] = None
+    background_photographer: Optional[str] = None
+    background_query: Optional[str] = None
 
 
 class TextShortProductionRequest(BaseModel):

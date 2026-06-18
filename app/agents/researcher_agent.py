@@ -254,7 +254,9 @@ Requirements:
 - visual_suggestions should describe b-roll or on-screen visuals; prefer ideas
   grounded in Pexels results when available.
 - recommended_media should list concrete photo or video picks from Pexels tool
-  output when present; otherwise return an empty list.
+  output when present; set download_url to the direct video_url or photo src URL,
+  url to the Pexels page URL, and preview_url to the preview image when available;
+  otherwise return an empty list.
 - Build citations from Wikipedia source_number, title, and url values in any
   specialist report outputs.
 - short_video_script should be approximately 60 to 120 words and must not

@@ -38,6 +38,7 @@ class MasterMediaRecommendation(BaseModel):
     media_type: str
     description: str
     url: str
+    download_url: Optional[str] = None
     preview_url: Optional[str] = None
     photographer: Optional[str] = None
     duration_seconds: Optional[int] = None

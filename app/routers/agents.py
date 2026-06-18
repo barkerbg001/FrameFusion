@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
+from app.agents.idea_agent import IdeaAgentError, run_idea_agent
 from app.agents.master_agent import MasterAgentError, run_master_agent
 from app.agents.producer_agent import ProducerAgentError, run_producer_agent
 from app.agents.researcher_agent import ResearcherAgentError, run_researcher_agent
@@ -8,6 +9,7 @@ from app.agents.history_researcher import (
     HistoryAgentError,
     research_history,
 )
+from app.models.idea import IdeaReport, IdeaRequest
 from app.models.producer import ProducerReport, ProducerRequest
 from app.models.master import MasterAgentReport, MasterResearchRequest
 from app.models.researcher import ResearcherReport, ResearcherRequest
@@ -42,6 +44,26 @@ from app.services.wikipedia_client import (
 
 
 router = APIRouter()
+
+
+@router.post(
+    "/ideas",
+    response_model=IdeaReport,
+)
+def idea_agent(request: IdeaRequest) -> IdeaReport:
+    try:
+        return IdeaReport(
+            **run_idea_agent(
+                topic=request.topic,
+                context=request.context,
+                audience=request.audience,
+                idea_count=request.idea_count,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except IdeaAgentError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
 @router.post(

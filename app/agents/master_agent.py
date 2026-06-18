@@ -28,6 +28,9 @@ def run_master_agent(
                     context=context,
                     short_format=short_format,
                     source_text=source_text,
+                    recommended_media=result.get("recommended_media"),
+                    research_data=result.get("research_data"),
+                    visual_suggestions=result.get("visual_suggestions"),
                 )
             except ProducerAgentError as exc:
                 raise MasterAgentError(
