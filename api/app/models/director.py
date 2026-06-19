@@ -2,14 +2,24 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from app.models.history import HistoryCitation
-from app.models.producer import ProducerReport
+from app.models.research import ResearchReport
+from app.models.video_editor import VideoEditorReport
 
 
 ShortFormat = Literal["auto", "sound", "silent"]
 
 
-class MasterResearchRequest(BaseModel):
+class DirectorMediaRecommendation(BaseModel):
+    media_type: str
+    description: str
+    url: str
+    download_url: Optional[str] = None
+    preview_url: Optional[str] = None
+    photographer: Optional[str] = None
+    duration_seconds: Optional[int] = None
+
+
+class DirectorRequest(BaseModel):
     task: str = Field(
         ...,
         min_length=5,
@@ -34,31 +44,11 @@ class MasterResearchRequest(BaseModel):
     )
 
 
-class MasterMediaRecommendation(BaseModel):
-    media_type: str
-    description: str
-    url: str
-    download_url: Optional[str] = None
-    preview_url: Optional[str] = None
-    photographer: Optional[str] = None
-    duration_seconds: Optional[int] = None
-
-
-class MasterResearchReport(BaseModel):
-    task: str
-    researched_at: str
-    summary: str
-    verified_facts: List[str]
-    content_hooks: List[str]
-    short_video_script: str
-    visual_suggestions: List[str]
-    recommended_media: List[MasterMediaRecommendation]
-    citations: List[HistoryCitation]
-    tools_used: List[str]
+class DirectorResearchReport(ResearchReport):
+    short_video_script: str = ""
     researchers_used: List[str] = Field(default_factory=list)
-    limitations: List[str]
-    research_data: Dict[str, Any]
 
 
-class MasterAgentReport(MasterResearchReport):
-    production: Optional[ProducerReport] = None
+class DirectorReport(DirectorResearchReport):
+    screenwriter: Optional[Dict[str, Any]] = None
+    production: Optional[VideoEditorReport] = None

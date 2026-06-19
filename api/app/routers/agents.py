@@ -1,46 +1,17 @@
 from fastapi import APIRouter, HTTPException
 
 from app.agents.idea_agent import IdeaAgentError, run_idea_agent
-from app.agents.master_agent import MasterAgentError, run_master_agent
+from app.agents.director_agent import DirectorAgentError, run_director_pipeline
 from app.agents.producer_agent import ProducerAgentError, run_producer_agent
 from app.agents.researcher_agent import ResearcherAgentError, run_researcher_agent
-from app.agents.anime_researcher import AnimeAgentError, research_anime
-from app.agents.history_researcher import (
-    HistoryAgentError,
-    research_history,
-)
+from app.agents.screenwriter_agent import ScreenwriterAgentError, run_screenwriter_agent
+from app.agents.video_editor_agent import VideoEditorAgentError, run_video_editor_agent
 from app.models.idea import IdeaReport, IdeaRequest
+from app.models.director import DirectorReport, DirectorRequest
 from app.models.producer import ProducerReport, ProducerRequest
-from app.models.master import MasterAgentReport, MasterResearchRequest
 from app.models.researcher import ResearcherReport, ResearcherRequest
-from app.models.anime import AnimeResearchReport, AnimeResearchRequest
-from app.agents.pokemon_researcher import (
-    PokemonAgentError,
-    research_pokemon,
-)
-from app.agents.weather_researcher import (
-    WeatherAgentError,
-    research_weather,
-)
-from app.models.history import HistoryResearchReport, HistoryResearchRequest
-from app.models.pokemon import PokemonResearchReport, PokemonResearchRequest
-from app.models.tools import WeatherResearchReport, WeatherResearchRequest
-from app.services.pokemon_client import (
-    PokemonNotFoundError,
-    PokemonServiceError,
-)
-from app.services.history_client import (
-    HistoryNotFoundError,
-    HistoryServiceError,
-)
-from app.services.weather_client import (
-    LocationNotFoundError,
-    WeatherServiceError,
-)
-from app.services.wikipedia_client import (
-    WikipediaNotFoundError,
-    WikipediaServiceError,
-)
+from app.models.screenwriter import ScreenwriterReport, ScreenwriterRequest
+from app.models.video_editor import VideoEditorReport, VideoEditorRequest
 
 
 router = APIRouter()
@@ -85,13 +56,56 @@ def researcher_agent(request: ResearcherRequest) -> ResearcherReport:
 
 
 @router.post(
-    "/master",
-    response_model=MasterAgentReport,
+    "/screenwrite",
+    response_model=ScreenwriterReport,
 )
-def master_agent(request: MasterResearchRequest) -> MasterAgentReport:
+def screenwriter_agent(request: ScreenwriterRequest) -> ScreenwriterReport:
     try:
-        return MasterAgentReport(
-            **run_master_agent(
+        return ScreenwriterReport(
+            **run_screenwriter_agent(
+                task=request.task,
+                context=request.context,
+                research=request.research,
+                target_words=request.target_words,
+                style=request.style,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except ScreenwriterAgentError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post(
+    "/edit-video",
+    response_model=VideoEditorReport,
+)
+def video_editor_agent(request: VideoEditorRequest) -> VideoEditorReport:
+    try:
+        return VideoEditorReport(
+            **run_video_editor_agent(
+                edit_brief=request.edit_brief,
+                script=request.script,
+                context=request.context,
+                research=request.research,
+                source_production=request.source_production,
+                short_format=request.short_format,
+            )
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except VideoEditorAgentError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+@router.post(
+    "/director",
+    response_model=DirectorReport,
+)
+def director_agent(request: DirectorRequest) -> DirectorReport:
+    try:
+        return DirectorReport(
+            **run_director_pipeline(
                 task=request.task,
                 context=request.context,
                 produce_short=request.produce_short,
@@ -100,7 +114,7 @@ def master_agent(request: MasterResearchRequest) -> MasterAgentReport:
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except MasterAgentError as exc:
+    except DirectorAgentError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
 
@@ -120,107 +134,4 @@ def producer_agent(request: ProducerRequest) -> ProducerReport:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except ProducerAgentError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
-@router.post(
-    "/anime-research",
-    response_model=AnimeResearchReport,
-)
-def anime_research_agent(
-    request: AnimeResearchRequest,
-) -> AnimeResearchReport:
-    try:
-        return AnimeResearchReport(
-            **research_anime(
-                title=request.title,
-                question=request.question,
-                max_sources=request.max_sources,
-                allow_spoilers=request.allow_spoilers,
-            )
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except WikipediaNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except WikipediaServiceError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except AnimeAgentError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
-@router.post(
-    "/history-research",
-    response_model=HistoryResearchReport,
-)
-def history_research_agent(
-    request: HistoryResearchRequest,
-) -> HistoryResearchReport:
-    try:
-        return HistoryResearchReport(
-            **research_history(
-                topic=request.topic,
-                question=request.question,
-                max_sources=request.max_sources,
-            )
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except HistoryNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except HistoryServiceError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except HistoryAgentError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
-@router.post(
-    "/pokemon-research",
-    response_model=PokemonResearchReport,
-)
-def pokemon_research_agent(
-    request: PokemonResearchRequest,
-) -> PokemonResearchReport:
-    try:
-        return PokemonResearchReport(
-            **research_pokemon(
-                identifier=request.identifier,
-                question=request.question,
-            )
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except PokemonNotFoundError as exc:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Pokemon '{request.identifier}' was not found",
-        ) from exc
-    except PokemonServiceError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except PokemonAgentError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-
-
-@router.post(
-    "/weather-research",
-    response_model=WeatherResearchReport,
-)
-def weather_research_agent(
-    request: WeatherResearchRequest,
-) -> WeatherResearchReport:
-    try:
-        return WeatherResearchReport(
-            **research_weather(
-                location=request.location,
-                question=request.question,
-                forecast_days=request.forecast_days,
-            )
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except LocationNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except WeatherServiceError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    except WeatherAgentError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

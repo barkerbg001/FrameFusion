@@ -127,7 +127,24 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-*.png
+
+# --- FrameFusion monorepo ---
+
+# API generated videos (also covered by *.mp4 below)
+api/generated/
+
+# Video pipeline temp files (written to api/ cwd)
+*_temp.jpg
+*_temp.jpeg
+*_temp.png
+resized_temp.jpg
+
+# Generated / runtime media
 *.mp3
 *.mp4
 *.avi
+
+# Loose image dumps from legacy video routes — do not block web/public assets
+*.png
+!web/
+!web/**

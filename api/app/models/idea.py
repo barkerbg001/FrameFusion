@@ -2,7 +2,7 @@ from typing import List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from app.models.master import ShortFormat
+from app.models.director import ShortFormat
 
 
 class IdeaRequest(BaseModel):
@@ -36,7 +36,7 @@ class VideoIdea(BaseModel):
     hook: str
     concept: str
     research_task: str = Field(
-        description="Task text ready to pass to the researcher or master agent",
+        description="Task text ready to pass to the researcher or director agent",
     )
     suggested_format: ShortFormat = "auto"
     visual_angle: str

@@ -70,19 +70,8 @@ def record_tool_result(
 
 
 def get_researchers_used() -> List[str]:
-    researcher_names = {
-        "weather_researcher",
-        "pokemon_researcher",
-        "history_researcher",
-        "anime_researcher",
-    }
-    return sorted(
-        {
-            entry["tool"]
-            for entry in _tool_results
-            if entry["tool"] in researcher_names
-        }
-    )
+    """Legacy helper retained for compatibility; research is now unified."""
+    return []
 
 
 def _json_tool_response(

@@ -2,7 +2,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from app.models.master import MasterResearchReport
+from app.models.research import ResearchReport
 
 
 class ResearcherRequest(BaseModel):
@@ -23,4 +23,4 @@ class ResearcherRequest(BaseModel):
     )
 
 
-ResearcherReport = MasterResearchReport
+ResearcherReport = ResearchReport

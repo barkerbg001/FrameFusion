@@ -117,7 +117,7 @@ Requirements:
 - Set topic to the requested topic text.
 - Return exactly {idea_count} ideas unless fewer strong distinct ideas exist.
 - research_task on each idea must be a complete instruction for the researcher
-  or master agent.
+  or director agent.
 - suggested_format must be auto, sound, or silent.
 - List each tool name once in tools_used.
 - Explain speculative or unverified angles in limitations.

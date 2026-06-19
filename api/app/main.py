@@ -1,9 +1,11 @@
 import logging
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import (
     agents,
+    chat,
     lofi,
     pexels,
     pokemon,
@@ -23,7 +25,19 @@ logging.getLogger("uvicorn").setLevel(logging.INFO)
 # Initialize FastAPI application
 app = FastAPI()
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://127.0.0.1:5173",
+        "http://localhost:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Include the authentication and common routers with prefixes
+app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(agents.router, prefix="/api/agents", tags=["Agents"])
 app.include_router(lofi.router, prefix="/api/lofi", tags=["Lofi"])
 app.include_router(pexels.router, prefix="/api/pexels", tags=["Pexels"])

@@ -1,7 +1,8 @@
 # FrameFusion
 
-FrameFusion is a FastAPI service for generating vertical text videos and
-providing data tools that can be called by AI agents.
+FrameFusion is a monorepo for generating vertical text videos and providing
+data tools that can be called by AI agents. It includes a FastAPI backend in
+`api/` and a Vite + TypeScript frontend in `web/`.
 
 The API currently supports:
 
@@ -19,27 +20,45 @@ The API currently supports:
 
 ```text
 FrameFusion/
-|-- app/
-|   |-- main.py
-|   |-- models/
-|   |-- routers/
-|   `-- services/
-|-- .env
-|-- requirements.txt
+|-- api/
+|   |-- app/
+|   |   |-- main.py
+|   |   |-- agents/
+|   |   |-- models/
+|   |   |-- routers/
+|   |   `-- services/
+|   |-- requirements.txt
+|   `-- .env
+|-- web/
+|   |-- src/
+|   |-- package.json
+|   `-- ...
+|-- .github/
+|   `-- dependabot.yml
 `-- README.md
 ```
 
 ## Requirements
 
+### API
+
 - Python 3.10 or newer
 - FFmpeg available to MoviePy
 - An ElevenLabs API key for text-to-speech videos
 
+### Web
+
+- Node.js 20 or newer
+- npm
+
 ## Setup
 
-Create and activate a virtual environment:
+### API
+
+From the `api` directory, create and activate a virtual environment:
 
 ```powershell
+cd api
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
@@ -50,7 +69,7 @@ Install the dependencies:
 pip install -r requirements.txt
 ```
 
-Create a `.env` file:
+Create a `.env` file in `api/`:
 
 ```dotenv
 ELEVENLABS_API_KEY=your_api_key
@@ -61,9 +80,18 @@ ELEVENLABS_VOICE_ID=your_voice_id
 
 The `.env` file is ignored by Git. Do not commit API keys.
 
+### Web
+
+From the `web` directory:
+
+```powershell
+cd web
+npm install
+```
+
 ## Run the API
 
-From the repository root:
+From the `api` directory:
 
 ```powershell
 uvicorn app.main:app --reload
@@ -74,6 +102,23 @@ The API is available at:
 - API: `http://127.0.0.1:8000`
 - Swagger UI: `http://127.0.0.1:8000/docs`
 - OpenAPI schema: `http://127.0.0.1:8000/openapi.json`
+
+## Run the Web App
+
+From the `web` directory:
+
+```powershell
+npm run dev
+```
+
+The dev server is available at `http://127.0.0.1:5173`.
+
+Other useful commands:
+
+```powershell
+npm run build    # production build to dist/
+npm run preview  # preview the production build
+```
 
 ## Endpoints
 
@@ -345,4 +390,4 @@ This endpoint requires `GEMINI_API_KEY` in `.env`. You can optionally set
 
 ## License
 
-FrameFusion is available under the [MIT License](LICENSE).
+FrameFusion is available under the [MIT License](api/LICENSE).
