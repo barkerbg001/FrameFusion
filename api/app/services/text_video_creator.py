@@ -252,8 +252,6 @@ def _load_background_clip(
     if media_type == "video":
         clip = VideoFileClip(background_media_path)
         fitted = _fit_background_to_vertical(clip)
-        if clip is not fitted:
-            clip.close()
         return _set_clip_fps(
             _loop_background_to_duration(fitted, duration_seconds),
             30,
@@ -263,6 +261,22 @@ def _load_background_clip(
     fitted = frame.resize(VIDEO_SIZE, Image.Resampling.LANCZOS)
     clip = ImageClip(np.asarray(fitted))
     return _set_clip_fps(_set_clip_duration(clip, duration_seconds), 30)
+
+
+def load_vertical_media_clip(
+    media_path: str,
+    media_type: str,
+    duration_seconds: float,
+):
+    """Load a local photo or video as a vertical 9:16 clip."""
+    normalized_type = media_type.strip().lower()
+    if normalized_type not in {"video", "photo", "image"}:
+        raise ValueError("media_type must be video, photo, or image")
+    if normalized_type == "image":
+        normalized_type = "photo"
+    if duration_seconds <= 0:
+        raise ValueError("duration_seconds must be greater than zero")
+    return _load_background_clip(media_path, normalized_type, duration_seconds)
 
 
 def _compose_short_with_background(

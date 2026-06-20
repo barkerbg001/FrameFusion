@@ -390,4 +390,4 @@ This endpoint requires `GEMINI_API_KEY` in `.env`. You can optionally set
 
 ## License
 
-FrameFusion is available under the [MIT License](api/LICENSE).
+FrameFusion is available under the [MIT License](LICENSE).

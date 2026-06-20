@@ -1,3 +1,4 @@
+import json
 import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -172,4 +173,90 @@ def prepare_pexels_background(
     return {
         **footage,
         "local_path": str(local_path.resolve()),
+    }
+
+
+def download_pexels_clips(query: str, clip_count: int) -> Dict[str, Any]:
+    """Search Pexels and download multiple clips to the local cache."""
+    normalized = " ".join(query.strip().split())
+    if len(normalized) < 2:
+        raise ValueError("query must contain at least two characters")
+    if clip_count < 1 or clip_count > 8:
+        raise ValueError("clip_count must be between 1 and 8")
+
+    clips: List[Dict[str, Any]] = []
+
+    try:
+        video_results = search_pexels_videos(
+            normalized,
+            per_page=min(max(clip_count * 2, clip_count), 15),
+        )
+        for video in video_results.get("videos") or []:
+            if len(clips) >= clip_count:
+                break
+            video_url = video.get("video_url")
+            if not video_url:
+                continue
+            local_path = download_pexels_media(video_url, "video")
+            clips.append(
+                {
+                    "clip_id": local_path.stem,
+                    "local_path": str(local_path.resolve()),
+                    "media_type": "video",
+                    "photographer": video.get("photographer"),
+                    "pexels_url": video.get("url"),
+                    "duration_seconds": video.get("duration_seconds"),
+                }
+            )
+    except PexelsNotFoundError:
+        pass
+
+    if len(clips) < clip_count:
+        try:
+            photo_results = search_pexels_photos(
+                normalized,
+                per_page=min(max(clip_count * 2, clip_count), 15),
+                orientation="portrait",
+            )
+            for photo in photo_results.get("photos") or []:
+                if len(clips) >= clip_count:
+                    break
+                source = photo.get("src") or {}
+                photo_url = (
+                    source.get("portrait")
+                    or source.get("large")
+                    or source.get("medium")
+                    or source.get("original")
+                )
+                if not photo_url:
+                    continue
+                local_path = download_pexels_media(photo_url, "photo")
+                clips.append(
+                    {
+                        "clip_id": local_path.stem,
+                        "local_path": str(local_path.resolve()),
+                        "media_type": "photo",
+                        "photographer": photo.get("photographer"),
+                        "pexels_url": photo.get("url"),
+                        "duration_seconds": None,
+                    }
+                )
+        except PexelsNotFoundError:
+            pass
+
+    if not clips:
+        raise PexelsFootageError(
+            f"No Pexels clips could be downloaded for '{normalized}'"
+        )
+
+    stitch_payload = [
+        {"local_path": clip["local_path"], "media_type": clip["media_type"]}
+        for clip in clips
+    ]
+    return {
+        "query": normalized,
+        "clip_count": len(clips),
+        "clips": clips,
+        "clips_json": json.dumps(stitch_payload),
+        "attribution": "Footage from Pexels (https://www.pexels.com). Credit photographers when publishing.",
     }

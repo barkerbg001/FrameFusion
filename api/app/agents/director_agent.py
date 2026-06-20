@@ -8,6 +8,8 @@ from google.genai import types
 
 from app.agents.base import (
     AgentConfigurationError,
+    AUDIO_TOOLS,
+    FOOTAGE_TOOLS,
     RESEARCH_TOOLS,
     SHORT_VIDEO_TOOLS,
     get_gemini_client,
@@ -20,6 +22,9 @@ from app.agents.researcher_agent import ResearcherAgentError, run_researcher_age
 from app.agents.screenwriter_agent import ScreenwriterAgentError, run_screenwriter_agent
 from app.agents.video_editor_agent import VideoEditorAgentError, run_video_editor_agent
 from app.models.chat import ChatMessage
+from app.services.output_filename import resolve_output_name
+from app.services.footage_stitcher import FootageStitcherError, stitch_footage_clips
+from app.services.pexels_footage import PexelsFootageError, download_pexels_clips
 from app.services.video_producer import VideoProducerError
 
 
@@ -27,12 +32,12 @@ class DirectorAgentError(Exception):
     pass
 
 
-DIRECTOR_TOOLS = [*RESEARCH_TOOLS, *SHORT_VIDEO_TOOLS]
+DIRECTOR_TOOLS = [*RESEARCH_TOOLS, *SHORT_VIDEO_TOOLS, *FOOTAGE_TOOLS, *AUDIO_TOOLS]
 
 SYSTEM_INSTRUCTION = """
-You are Frammy — FrameFusion's director for short-form video creators.
+You are Framey — FrameFusion's AI agent for short-form video creators.
 
-You coordinate research, scripting, and video production. Refer to yourself as Frammy
+You coordinate research, scripting, and video production. Refer to yourself as Framey
 when speaking to the user. You have direct tools for quick lookups and one-off renders,
 and you delegate full pipeline work to specialist agents (researcher, screenwriter,
 video editor) when needed.
@@ -41,22 +46,59 @@ Research tools:
 - get_weather_tool, get_pokemon_tool, search_wikipedia_tool
 - get_current_time_tool, search_pexels_tool
 
-Video creation tools (USE THESE when the user wants an actual video file):
+Pexels b-roll tools (USE for multi-clip stock footage videos):
+- download_pexels_footage_tool — search Pexels and download clips locally
+- stitch_pexels_footage_tool — stitch downloaded clips into one 9:16 MP4
+Workflow: download first, then stitch using the clips_json from the download result.
+
+Audio tools (USE after a video exists):
+- add_narration_to_video_tool — ElevenLabs voiceover behind an existing MP4
+- add_audio_file_to_video_tool — mux an mp3/wav file behind an existing MP4
+Pass the prior tool's output_path as video_path. For b-roll with voiceover:
+download → stitch → add_narration_to_video_tool.
+
+Video creation tools (USE for narrated or text-on-screen shorts):
 - create_text_short_video_tool — silent 9:16 vertical text videos (always available)
 - create_sound_short_video_tool — narrated 9:16 videos with ElevenLabs voice
 
-When the user asks to create, make, or render a video you MUST call a video tool
-in the same turn. Do not only suggest Pexels clips, editing tips, or B-roll —
-produce the MP4 file first, then briefly summarize what you made.
+When the user asks for b-roll, stock footage, or a Pexels montage you MUST call
+download_pexels_footage_tool and then stitch_pexels_footage_tool in the same turn
+when possible. Do not only search Pexels and describe clips — download and stitch.
 
-For research-heavy or polished shorts, gather facts first. The full pipeline is
-research → screenwriter → video editor; chat fallback runs that automatically.
+When the user asks for a narrated/text short with one background clip, the editor
+pipeline renders automatically with Pexels.
+
+When the user asks to create, make, or render a video you MUST produce an MP4 in
+the same turn. Do not only suggest editing tips.
+
+Never say you will "delegate to the video editor" — you ARE Framey; pipelines and
+tools run automatically. Never ask "would you like me to proceed?" after the user
+already said yes — just create the video.
+
+Never include file paths, output_path values, or local disk locations in replies.
+When a video is ready, say "Preview or download your video below."
 
 Never say you cannot create video. You can always use create_text_short_video_tool.
 
 Use tools instead of guessing facts. Be conversational and clear.
 When you use tools, summarize results naturally rather than dumping raw JSON.
 """
+
+BROLL_PATTERN = re.compile(
+    r"\b(b[\s-]?roll|broll|pexels?|stock\s+footage|background\s+footage|"
+    r"royalty[\s-]free\s+(video|footage|clip)s?)\b",
+    re.IGNORECASE,
+)
+
+STITCH_PATTERN = re.compile(
+    r"\b(stitch|montage|compile|combine|concatenate|multiple\s+clips?)\b",
+    re.IGNORECASE,
+)
+
+PATH_PATTERN = re.compile(
+    r"(?:[A-Za-z]:\\[^\s]*\.mp4|/[^\s]*\.mp4|(?:\./)?generated/[^\s]*\.mp4)",
+    re.IGNORECASE,
+)
 
 VIDEO_INTENT_PATTERN = re.compile(
     r"\b(create|make|generate|render|produce|build)\b.{0,48}\b("
@@ -127,6 +169,80 @@ def run_director_pipeline(
         ) from exc
 
 
+def _conversation_text(messages: list[ChatMessage], limit: int = 12) -> str:
+    return " ".join(message.content for message in messages[-limit:])
+
+
+def _conversation_mentions_broll(messages: list[ChatMessage]) -> bool:
+    return bool(BROLL_PATTERN.search(_conversation_text(messages)))
+
+
+def _wants_footage_stitch(messages: list[ChatMessage]) -> bool:
+    return bool(STITCH_PATTERN.search(_conversation_text(messages)))
+
+
+def _wants_broll_montage(messages: list[ChatMessage]) -> bool:
+    text = _conversation_text(messages)
+    if not BROLL_PATTERN.search(text):
+        return False
+    if re.search(
+        r"\b(narrat(ed|ion)|voiceover|voice[\s-]over|on[\s-]screen\s+text|script)\b",
+        text,
+        re.IGNORECASE,
+    ):
+        return False
+    return True
+
+
+def _should_use_editor_pipeline(messages: list[ChatMessage]) -> bool:
+    if _wants_footage_stitch(messages) or _wants_broll_montage(messages):
+        return False
+    last = messages[-1].content
+    if BROLL_PATTERN.search(last):
+        return True
+    if not _conversation_mentions_broll(messages):
+        return False
+    if _user_wants_video_creation(messages):
+        return True
+    return bool(CONFIRMATION_PATTERN.search(last))
+
+
+def _build_pipeline_task(messages: list[ChatMessage]) -> str:
+    last = messages[-1].content.strip()
+    broll_prefix = (
+        "Create a polished short with Pexels b-roll background footage. "
+        if _conversation_mentions_broll(messages)
+        else ""
+    )
+
+    if CONFIRMATION_PATTERN.search(last) and len(last) <= 40:
+        for message in reversed(messages[:-1]):
+            if message.role == "user" and len(message.content.strip()) > 15:
+                if not CONFIRMATION_PATTERN.search(message.content):
+                    return broll_prefix + message.content.strip()
+        return (
+            f"{broll_prefix}Fulfill the latest video request from this conversation."
+        )
+
+    return broll_prefix + last
+
+
+def _sanitize_reply(text: str, has_attachments: bool) -> str:
+    cleaned = PATH_PATTERN.sub("", text)
+    cleaned = re.sub(
+        r"You can (?:find|watch|view|download)(?: the video)? here:\s*",
+        "Preview or download your video below. ",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    if has_attachments and "below" not in cleaned.lower():
+        cleaned = f"{cleaned}\n\nPreview or download your video below.".strip()
+    return cleaned or (
+        "Preview or download your video below." if has_attachments else cleaned
+    )
+
+
 def _user_wants_video_creation(messages: list[ChatMessage]) -> bool:
     last = messages[-1].content
     if VIDEO_INTENT_PATTERN.search(last):
@@ -136,13 +252,19 @@ def _user_wants_video_creation(messages: list[ChatMessage]) -> bool:
         return False
 
     recent = " ".join(message.content for message in messages[-8:])
-    return bool(re.search(r"\b(video|short|mp4|reel|clip)\b", recent, re.IGNORECASE))
+    return bool(
+        re.search(
+            r"\b(video|short|mp4|reel|clip|b[\s-]?roll|broll|pexels?)\b",
+            recent,
+            re.IGNORECASE,
+        )
+    )
 
 
 def _format_conversation(messages: list[ChatMessage], limit: int = 12) -> str:
     lines: list[str] = []
     for message in messages[-limit:]:
-        speaker = "User" if message.role == "user" else "Frammy"
+        speaker = "User" if message.role == "user" else "Framey"
         lines.append(f"{speaker}: {message.content}")
     return "\n\n".join(lines)
 
@@ -152,7 +274,12 @@ def _extract_video_attachments() -> list[dict[str, Any]]:
     seen: set[str] = set()
 
     for entry in get_tool_results():
-        if entry.get("tool") not in ("text_short", "sound_short"):
+        if entry.get("tool") not in (
+            "text_short",
+            "sound_short",
+            "footage_stitch",
+            "video_audio",
+        ):
             continue
         result = entry.get("result")
         if not isinstance(result, dict):
@@ -202,7 +329,7 @@ def _pipeline_fallback_message(production: Dict[str, Any]) -> str:
 def _run_pipeline_fallback(messages: list[ChatMessage]) -> str:
     conversation = _format_conversation(messages)
     pipeline = run_director_pipeline(
-        task=messages[-1].content,
+        task=_build_pipeline_task(messages),
         context=f"Conversation so far:\n{conversation}",
         produce_short=True,
         short_format="auto",
@@ -212,7 +339,49 @@ def _run_pipeline_fallback(messages: list[ChatMessage]) -> str:
         raise DirectorAgentError("Pipeline did not produce a video")
 
     _record_pipeline_production(production)
-    return _pipeline_fallback_message(production)
+    message = _pipeline_fallback_message(production)
+    edit_data = production.get("edit_data") or {}
+    if edit_data.get("pexels_background"):
+        message += " Includes Pexels b-roll background footage."
+    return message
+
+
+def _derive_footage_query(messages: list[ChatMessage]) -> str:
+    for message in reversed(messages):
+        if message.role != "user":
+            continue
+        content = message.content.strip()
+        if len(content) < 8:
+            continue
+        if CONFIRMATION_PATTERN.search(content) and len(content) <= 40:
+            continue
+        return content
+    return "motivational nature b-roll"
+
+
+def _run_footage_stitch_fallback(messages: list[ChatMessage]) -> str:
+    query = _derive_footage_query(messages)
+    downloaded = download_pexels_clips(query, 4)
+    record_tool_result(
+        "pexels_download",
+        {"query": query, "clip_count": 4},
+        downloaded,
+    )
+    output_name = resolve_output_name(query, default_stem="broll-montage")
+    stitched = stitch_footage_clips(downloaded["clips_json"], output_name, 3.0)
+    record_tool_result(
+        "footage_stitch",
+        {
+            "clips_json": downloaded["clips_json"],
+            "output_name": output_name,
+            "seconds_per_clip": 3,
+        },
+        stitched,
+    )
+    return (
+        f"Your Pexels b-roll montage is ready ({downloaded['clip_count']} clips). "
+        "Preview or download below."
+    )
 
 
 def run_director_chat(messages: list[ChatMessage]) -> DirectorChatResult:
@@ -220,6 +389,8 @@ def run_director_chat(messages: list[ChatMessage]) -> DirectorChatResult:
         raise ValueError("The last message must be from the user")
 
     wants_video = _user_wants_video_creation(messages)
+    use_editor = _should_use_editor_pipeline(messages)
+    wants_broll_montage = _wants_broll_montage(messages)
 
     try:
         client = get_gemini_client()
@@ -237,7 +408,20 @@ def run_director_chat(messages: list[ChatMessage]) -> DirectorChatResult:
     ]
 
     system_instruction = SYSTEM_INSTRUCTION
-    if wants_video:
+    if use_editor:
+        system_instruction += (
+            "\n\nThe user wants a narrated/text short with Pexels background. Do NOT "
+            "call create_text_short_video_tool or create_sound_short_video_tool — "
+            "the editor pipeline renders with Pexels automatically. You may use "
+            "research tools. Keep your reply brief."
+        )
+    elif _wants_footage_stitch(messages) or wants_broll_montage:
+        system_instruction += (
+            "\n\nThe user wants a Pexels b-roll montage. You MUST call "
+            "download_pexels_footage_tool and then stitch_pexels_footage_tool "
+            "using the clips_json from the download result before finishing."
+        )
+    elif wants_video:
         system_instruction += (
             "\n\nThe user's latest message is a video creation request. "
             "You must call create_sound_short_video_tool or "
@@ -270,7 +454,37 @@ def run_director_chat(messages: list[ChatMessage]) -> DirectorChatResult:
     reply = (response.text or "").strip()
     attachments = _extract_video_attachments()
 
-    if wants_video and not attachments:
+    if use_editor:
+        reset_tool_results()
+        try:
+            fallback_note = _run_pipeline_fallback(messages)
+            attachments = _extract_video_attachments()
+            if attachments:
+                reply = (
+                    f"{reply}\n\n{fallback_note}".strip()
+                    if reply
+                    else fallback_note
+                )
+        except (DirectorAgentError, VideoEditorAgentError, VideoProducerError) as exc:
+            error_note = (
+                f"I tried to render the video with Pexels b-roll but it failed: {exc}"
+            )
+            reply = f"{reply}\n\n{error_note}".strip() if reply else error_note
+    elif (wants_broll_montage or _wants_footage_stitch(messages)) and not attachments:
+        reset_tool_results()
+        try:
+            fallback_note = _run_footage_stitch_fallback(messages)
+            attachments = _extract_video_attachments()
+            if attachments:
+                reply = (
+                    f"{reply}\n\n{fallback_note}".strip()
+                    if reply
+                    else fallback_note
+                )
+        except (PexelsFootageError, FootageStitcherError, DirectorAgentError) as exc:
+            error_note = f"I tried to build the Pexels b-roll montage but it failed: {exc}"
+            reply = f"{reply}\n\n{error_note}".strip() if reply else error_note
+    elif wants_video and not attachments and not wants_broll_montage:
         try:
             fallback_note = _run_pipeline_fallback(messages)
             attachments = _extract_video_attachments()
@@ -293,4 +507,5 @@ def run_director_chat(messages: list[ChatMessage]) -> DirectorChatResult:
     elif not reply:
         raise DirectorAgentError("The agent returned an empty response")
 
+    reply = _sanitize_reply(reply, bool(attachments))
     return DirectorChatResult(content=reply, attachments=attachments)

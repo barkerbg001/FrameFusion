@@ -4,6 +4,16 @@ import {
   sendChat,
   type StoredChatMessage,
 } from './api/client.ts'
+import {
+  getActiveChat,
+  listRecentChats,
+  loadChatStore,
+  saveChatStore,
+  startNewChat,
+  switchChat,
+  upsertActiveChat,
+  type SavedChat,
+} from './chatStorage.ts'
 import { renderMarkdown } from './markdown.ts'
 import './chat.css'
 
@@ -89,7 +99,7 @@ function showThinkingIndicator(log: HTMLElement): void {
   indicator.setAttribute('aria-busy', 'true')
   indicator.innerHTML = `
     <div class="thinking-indicator">
-      <span class="thinking-label">Frammy is thinking</span>
+      <span class="thinking-label">Framey is thinking</span>
       <span class="thinking-dots" aria-hidden="true">
         <span></span><span></span><span></span>
       </span>
@@ -109,8 +119,8 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
       <aside class="chat-sidebar">
         <div class="sidebar-top">
           <div class="sidebar-brand">
-            <span class="sidebar-logo" aria-hidden="true">F</span>
-            <span class="sidebar-title">Frammy</span>
+            <span class="sidebar-logo" aria-hidden="true">FF</span>
+            <span class="sidebar-title">FrameFusion</span>
           </div>
           <button id="chat-new" type="button" class="sidebar-new">
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.75" d="M12 5v14M5 12h14"/></svg>
@@ -135,7 +145,7 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
 
         <div class="sidebar-section">
           <p class="sidebar-label">Recents</p>
-          <p class="sidebar-empty" id="sidebar-recent">No conversations yet</p>
+          <div id="sidebar-recents" class="sidebar-recents" role="list"></div>
         </div>
 
         <div class="sidebar-footer">
@@ -153,7 +163,7 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
         <div class="chat-greeting" id="chat-greeting">
           <span class="greeting-icon" aria-hidden="true">✦</span>
           <h1>${getGreeting()}</h1>
-          <p class="greeting-subtitle">I'm Frammy — your short-form video director.</p>
+          <p class="greeting-subtitle">I'm Framey — FrameFusion's AI for short-form video.</p>
         </div>
 
         <div id="chat-log" class="chat-log" aria-live="polite"></div>
@@ -164,7 +174,7 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
               id="chat-input"
               rows="1"
               maxlength="8000"
-              placeholder="Ask Frammy anything…"
+              placeholder="Ask Framey anything…"
               autocomplete="off"
             ></textarea>
             <div class="chat-form-actions">
@@ -194,12 +204,50 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
   const messageInput = root.querySelector<HTMLTextAreaElement>('#chat-input')!
   const sendButton = root.querySelector<HTMLButtonElement>('#chat-send')!
   const suggestionsEl = root.querySelector<HTMLElement>('#chat-suggestions')!
-  const recentEl = root.querySelector<HTMLParagraphElement>('#sidebar-recent')!
+  const recentsEl = root.querySelector<HTMLElement>('#sidebar-recents')!
   const newChatButton = root.querySelector<HTMLButtonElement>('#chat-new')!
 
-  const messages: StoredChatMessage[] = []
+  let store = loadChatStore()
+  let messages: StoredChatMessage[] = [...getActiveChat(store).messages]
   let isSending = false
   let apiOnline = false
+
+  function persistMessages(): void {
+    store = upsertActiveChat(store, messages)
+    saveChatStore(store)
+    renderRecents()
+  }
+
+  function renderRecents(): void {
+    const chats = listRecentChats(store).filter(
+      (chat) => chat.messages.length > 0 || chat.id === store.activeChatId,
+    )
+
+    if (!chats.length) {
+      recentsEl.innerHTML = '<p class="sidebar-empty">No conversations yet</p>'
+      return
+    }
+
+    recentsEl.innerHTML = chats
+      .map(
+        (chat: SavedChat) => `
+          <button
+            type="button"
+            class="sidebar-chat-item${chat.id === store.activeChatId ? ' active' : ''}"
+            data-chat-id="${escapeHtml(chat.id)}"
+            role="listitem"
+            title="${escapeHtml(chat.title)}"
+          >${escapeHtml(chat.title)}</button>
+        `,
+      )
+      .join('')
+  }
+
+  function loadActiveChat(): void {
+    messages = [...getActiveChat(store).messages]
+    updateLayout()
+    renderRecents()
+  }
 
   function hasUserMessages(): boolean {
     return messages.some((message) => message.role === 'user')
@@ -232,7 +280,7 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
 
   apiOnline = await checkApiConnection()
   if (apiOnline) {
-    statusEl.textContent = 'Frammy is ready'
+    statusEl.textContent = 'Framey is ready'
   } else {
     statusEl.textContent = 'API offline'
     messageInput.placeholder = 'Start the API to chat…'
@@ -247,11 +295,11 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
 
     if (sending) {
       showThinkingIndicator(log)
-      statusEl.textContent = 'Frammy is thinking…'
+      statusEl.textContent = 'Framey is thinking…'
     } else {
       removeThinkingIndicator(log)
       if (apiOnline) {
-        statusEl.textContent = 'Frammy is ready'
+        statusEl.textContent = 'Framey is ready'
       }
     }
   }
@@ -262,17 +310,16 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
     }
 
     messages.push({ role: 'user', content })
+    persistMessages()
     updateLayout()
     messageInput.value = ''
     resizeInput()
     setSending(true)
 
-    const preview = content.length > 36 ? `${content.slice(0, 36)}…` : content
-    recentEl.textContent = preview
-
     try {
       const reply = await sendChat(messages)
       messages.push(reply)
+      persistMessages()
       renderMessages(log, messages)
     } catch (error) {
       const detail =
@@ -281,6 +328,7 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
         role: 'assistant',
         content: `Sorry, I couldn't respond:\n\n\`${detail}\``,
       })
+      persistMessages()
       renderMessages(log, messages)
     } finally {
       setSending(false)
@@ -304,9 +352,26 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
   })
 
   newChatButton.addEventListener('click', () => {
-    messages.length = 0
-    recentEl.textContent = 'No conversations yet'
-    updateLayout()
+    store = startNewChat(store)
+    saveChatStore(store)
+    loadActiveChat()
+    messageInput.focus()
+  })
+
+  recentsEl.addEventListener('click', (event) => {
+    const target = (event.target as HTMLElement).closest<HTMLButtonElement>(
+      '[data-chat-id]',
+    )
+    if (!target?.dataset.chatId || isSending) {
+      return
+    }
+    const next = switchChat(store, target.dataset.chatId)
+    if (!next) {
+      return
+    }
+    store = next
+    saveChatStore(store)
+    loadActiveChat()
     messageInput.focus()
   })
 
@@ -315,4 +380,5 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
   })
 
   updateLayout()
+  renderRecents()
 }

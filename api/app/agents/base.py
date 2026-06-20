@@ -7,6 +7,12 @@ from google import genai
 
 from app.services.output_filename import resolve_output_name
 from app.services.pexels_client import search_pexels
+from app.services.pexels_footage import (
+    PexelsFootageError,
+    download_pexels_clips,
+)
+from app.services.footage_stitcher import FootageStitcherError, stitch_footage_clips
+from app.services.video_audio import VideoAudioError, add_audio_file_to_video, add_narration_to_video
 from app.services.pokemon_client import get_pokemon_data
 from app.services.time_tool import get_current_time
 from app.services.video_producer import (
@@ -225,6 +231,109 @@ def create_sound_short_video_tool(text: str) -> str:
     )
 
 
+def download_pexels_footage_tool(query: str, clip_count: int) -> str:
+    """Downloads Pexels stock clips to local cache for stitching.
+
+    Args:
+        query: Pexels search terms such as 'AI technology' or 'city night'.
+        clip_count: Number of clips to download, from 1 to 8.
+
+    Returns:
+        A JSON string with clips and clips_json for stitch_pexels_footage_tool.
+    """
+    args = {"query": query, "clip_count": clip_count}
+    return _json_tool_response(
+        "pexels_download",
+        args,
+        lambda: download_pexels_clips(query, clip_count),
+    )
+
+
+def stitch_pexels_footage_tool(
+    clips_json: str,
+    output_name: str,
+    seconds_per_clip: int,
+) -> str:
+    """Stitches downloaded Pexels clips into one vertical 9:16 MP4.
+
+    Args:
+        clips_json: The clips_json field returned by download_pexels_footage_tool.
+        output_name: Output .mp4 filename without a path.
+        seconds_per_clip: Seconds each clip appears in the final video, from 1 to 15.
+
+    Returns:
+        A JSON string with output_path, duration_seconds, and dimensions.
+    """
+    args = {
+        "clips_json": clips_json,
+        "output_name": output_name,
+        "seconds_per_clip": seconds_per_clip,
+    }
+    return _json_tool_response(
+        "footage_stitch",
+        args,
+        lambda: stitch_footage_clips(
+            clips_json,
+            output_name,
+            float(seconds_per_clip),
+        ),
+    )
+
+
+def add_narration_to_video_tool(
+    video_path: str,
+    output_name: str,
+    narration_text: str,
+) -> str:
+    """Adds ElevenLabs narration audio behind an existing MP4 video.
+
+    Args:
+        video_path: output_path from a prior video tool in the generated folder.
+        output_name: New .mp4 filename without a path.
+        narration_text: Voiceover script to narrate over the video.
+
+    Returns:
+        A JSON string with output_path, duration_seconds, and dimensions.
+    """
+    args = {
+        "video_path": video_path,
+        "output_name": output_name,
+        "narration_text": narration_text,
+    }
+    return _json_tool_response(
+        "video_audio",
+        args,
+        lambda: add_narration_to_video(video_path, output_name, narration_text),
+    )
+
+
+def add_audio_file_to_video_tool(
+    video_path: str,
+    output_name: str,
+    audio_path: str,
+) -> str:
+    """Adds an existing audio file behind an MP4 video.
+
+    Args:
+        video_path: output_path from a prior video tool in the generated folder.
+        output_name: New .mp4 filename without a path.
+        audio_path: Local mp3, wav, m4a, or aac file path.
+
+    Returns:
+        A JSON string with output_path, duration_seconds, and dimensions.
+    """
+    args = {
+        "video_path": video_path,
+        "output_name": output_name,
+        "audio_path": audio_path,
+    }
+    return _json_tool_response(
+        "video_audio",
+        args,
+        lambda: add_audio_file_to_video(video_path, output_name, audio_path),
+    )
+
+
 def create_lofi_video_tool(
     image_path: str,
     audio_path: str,
@@ -272,6 +381,16 @@ SHORT_VIDEO_TOOLS = [
     create_sound_short_video_tool,
 ]
 
+FOOTAGE_TOOLS = [
+    download_pexels_footage_tool,
+    stitch_pexels_footage_tool,
+]
+
+AUDIO_TOOLS = [
+    add_narration_to_video_tool,
+    add_audio_file_to_video_tool,
+]
+
 LOFI_TOOLS = [
     create_lofi_video_tool,
 ]
@@ -279,12 +398,16 @@ LOFI_TOOLS = [
 ALL_TOOLS = [
     *RESEARCH_TOOLS,
     *SHORT_VIDEO_TOOLS,
+    *FOOTAGE_TOOLS,
+    *AUDIO_TOOLS,
     *LOFI_TOOLS,
 ]
 
 TOOL_GROUPS = {
     "research": RESEARCH_TOOLS,
     "short_video": SHORT_VIDEO_TOOLS,
+    "footage": FOOTAGE_TOOLS,
+    "audio": AUDIO_TOOLS,
     "lofi": LOFI_TOOLS,
     "all": ALL_TOOLS,
 }
@@ -300,6 +423,9 @@ def run_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         "pexels": search_pexels_tool,
         "text_short": create_text_short_video_tool,
         "sound_short": create_sound_short_video_tool,
+        "pexels_download": download_pexels_footage_tool,
+        "footage_stitch": stitch_pexels_footage_tool,
+        "video_audio": add_narration_to_video_tool,
         "lofi": create_lofi_video_tool,
     }
     tool = tools.get(tool_name)
@@ -307,6 +433,7 @@ def run_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(
             "tool_name must be one of: "
             "time, weather, wikipedia, pokemon, pexels, "
-            "text_short, sound_short, lofi"
+            "text_short, sound_short, pexels_download, footage_stitch, "
+            "video_audio, lofi"
         )
     return json.loads(tool(**arguments))
