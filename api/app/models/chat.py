@@ -30,3 +30,9 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     message: ChatMessage
     attachments: list[ChatAttachment] = Field(default_factory=list)
+
+
+class VideoListItem(BaseModel):
+    url: str
+    filename: str
+    created_at: int

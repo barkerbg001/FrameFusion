@@ -1,40 +1,40 @@
 # FrameFusion
 
-FrameFusion is a monorepo for generating vertical text videos and providing
-data tools that can be called by AI agents. It includes a FastAPI backend in
-`api/` and a Vite + TypeScript frontend in `web/`.
+FrameFusion is a monorepo for AI-assisted short-form video creation. The **FastAPI**
+backend in `api/` powers specialist agents and video tools. The **Vite + TypeScript**
+frontend in `web/` provides **Framey** — the chat UI for research, scripting, b-roll
+montages, narration, and rendered MP4s.
 
-The API currently supports:
+## Features
 
-- 9:16 text videos with centered text and solid-color backgrounds
-- Text-to-speech videos generated with ElevenLabs
-- Videos made from uploaded audio
-- Lofi videos made from uploaded images and audio
-- Pokemon data lookup
-- Current time lookup by timezone
-- Current weather lookup by location
-- Gemini weather research agent with multi-day forecasts
-- YouTube video downloads
+- **Framey chat** — conversational agent with tool calling (research, video, Pexels)
+- **9:16 vertical videos** — text shorts, narrated shorts, b-roll montages
+- **Pexels b-roll pipeline** — download clips, stitch montages, add narration
+- **Specialist agents** — researcher, screenwriter, video editor, idea generator
+- **Data tools** — weather, Pokemon, Wikipedia, Pexels, time
+- **Web media library** — browse all generated videos in one place
+- **Local chat history** — conversations saved in the browser; delete anytime
 
-## Project Structure
+## Project structure
 
 ```text
 FrameFusion/
 |-- api/
 |   |-- app/
-|   |   |-- main.py
-|   |   |-- agents/
+|   |   |-- agents/          # Framey (director), researcher, screenwriter, editor, …
 |   |   |-- models/
 |   |   |-- routers/
 |   |   `-- services/
+|   |-- generated/           # Rendered MP4s (gitignored)
 |   |-- requirements.txt
 |   `-- .env
 |-- web/
 |   |-- src/
-|   |-- package.json
-|   `-- ...
-|-- .github/
-|   `-- dependabot.yml
+|   |   |-- chat.ts          # Framey UI
+|   |   |-- chatStorage.ts   # localStorage chat persistence
+|   |   `-- mediaLibrary.ts  # Media gallery
+|   `-- package.json
+|-- LICENSE
 `-- README.md
 ```
 
@@ -42,103 +42,176 @@ FrameFusion/
 
 ### API
 
-- Python 3.10 or newer
-- FFmpeg available to MoviePy
-- An ElevenLabs API key for text-to-speech videos
+- Python 3.10+
+- FFmpeg (used by MoviePy)
+- API keys (see below)
 
 ### Web
 
-- Node.js 20 or newer
+- Node.js 20+
 - npm
 
 ## Setup
 
 ### API
 
-From the `api` directory, create and activate a virtual environment:
-
 ```powershell
 cd api
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-```
-
-Install the dependencies:
-
-```powershell
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in `api/`:
+Create `api/.env`:
 
 ```dotenv
-ELEVENLABS_API_KEY=your_api_key
+GEMINI_API_KEY=your_gemini_key
+PEXELS_API_KEY=your_pexels_key
+ELEVENLABS_API_KEY=your_elevenlabs_key
 
-# Optional: override the default ElevenLabs voice.
+# Optional
 ELEVENLABS_VOICE_ID=your_voice_id
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
-The `.env` file is ignored by Git. Do not commit API keys.
+| Key | Required for |
+| --- | --- |
+| `GEMINI_API_KEY` | Framey chat and all Gemini agents |
+| `PEXELS_API_KEY` | Pexels search, b-roll download, backgrounds |
+| `ELEVENLABS_API_KEY` | Narrated shorts and voiceover on b-roll |
+
+The `.env` file is gitignored. Do not commit secrets.
 
 ### Web
-
-From the `web` directory:
 
 ```powershell
 cd web
 npm install
 ```
 
-## Run the API
+## Run
 
-From the `api` directory:
+**Terminal 1 — API** (from `api/`):
 
 ```powershell
-uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-The API is available at:
+- API: http://127.0.0.1:8000
+- Swagger: http://127.0.0.1:8000/docs
 
-- API: `http://127.0.0.1:8000`
-- Swagger UI: `http://127.0.0.1:8000/docs`
-- OpenAPI schema: `http://127.0.0.1:8000/openapi.json`
-
-## Run the Web App
-
-From the `web` directory:
+**Terminal 2 — Web** (from `web/`):
 
 ```powershell
 npm run dev
 ```
 
-The dev server is available at `http://127.0.0.1:5173`.
+- App: http://127.0.0.1:5173 (proxies `/api` to the backend)
 
-Other useful commands:
+## Web app
 
-```powershell
-npm run build    # production build to dist/
-npm run preview  # preview the production build
+### Framey chat
+
+Talk to Framey to research topics, create text/narrated shorts, or build Pexels b-roll
+montages with optional voiceover. Videos appear inline in the chat and in the **Media**
+library.
+
+Example prompts:
+
+- *Research Pikachu with verified facts for a short video*
+- *Create a narrated short about Claude AI skills*
+- *Create a motivational b-roll montage for a Pokemon video*
+
+### Chat history
+
+Conversations are stored in **localStorage** (`framefusion:chats`) in your browser.
+Use the **⋮** menu on any chat in **Recents** to **Rename** or **Delete** it. Renamed
+titles are kept even as the conversation grows.
+
+### Media library
+
+Open **Media** in the sidebar to see every MP4 Framey created — merged from chat
+attachments and the server's `api/generated/` folder.
+
+## Agent architecture
+
+```
+Framey (director) — chat + full pipeline orchestration
+  ├── Researcher
+  ├── Screenwriter
+  └── Video Editor
+
+Framey tools (in chat):
+  Research: weather, Pokemon, Wikipedia, time, Pexels search
+  Video: text short, sound short
+  Footage: download Pexels clips, stitch montage
+  Audio: add narration or audio file to existing video
 ```
 
-## Endpoints
+### Pipeline (API)
+
+```
+Research → Screenwrite → Video Editor → MP4
+```
+
+### B-roll montage (chat tools)
+
+```
+download_pexels_footage → stitch_pexels_footage → add_narration_to_video (optional)
+```
+
+## API endpoints
+
+### Chat & media
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `POST` | `/api/shorts/generate-text-video` | Generate a silent 9:16 text video |
-| `POST` | `/api/shorts/generate-sound-video` | Generate narration with ElevenLabs and create a 9:16 video |
-| `POST` | `/api/shorts/generate-audio-video` | Create a 9:16 video from uploaded audio |
-| `POST` | `/api/lofi/generate-video` | Create a lofi video from uploaded images and audio |
-| `GET` | `/api/pokemon/{identifier}` | Get Pokemon data by name or Pokedex number |
-| `GET` | `/api/time` | Get the current time in an IANA timezone |
-| `GET` | `/api/weather` | Get current weather for a location |
-| `GET` | `/api/wikipedia/search` | Search Wikipedia and return cited article extracts |
-| `POST` | `/api/agents/anime-research` | Research an anime with citations and spoiler controls |
-| `POST` | `/api/agents/history-research` | Research a historical topic with citations |
-| `POST` | `/api/agents/pokemon-research` | Research a Pokemon with Gemini and PokeAPI |
-| `POST` | `/api/agents/weather-research` | Research current and forecast weather with Gemini |
-| `GET` | `/api/youtube/download-video` | Download a YouTube video |
+| `GET` | `/api/chat/health` | Health check |
+| `POST` | `/api/chat` | Talk to Framey |
+| `GET` | `/api/chat/videos` | List generated MP4s |
+| `GET` | `/api/chat/videos/{filename}` | Download/stream a video |
 
-## Generate a Text Video
+### Agents
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/agents/director` | Full research → script → edit pipeline |
+| `POST` | `/api/agents/research` | Unified research report |
+| `POST` | `/api/agents/screenwrite` | Short-form script |
+| `POST` | `/api/agents/edit-video` | Edit and render a video |
+| `POST` | `/api/agents/produce-short` | Render from script (no editor) |
+| `POST` | `/api/agents/ideas` | Brainstorm short-form ideas |
+
+### Video & data tools
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/shorts/generate-text-video` | Silent 9:16 text video |
+| `POST` | `/api/shorts/generate-sound-video` | ElevenLabs narrated video |
+| `POST` | `/api/shorts/generate-audio-video` | Video from uploaded audio |
+| `POST` | `/api/lofi/generate-video` | Lofi loop from image + audio |
+| `GET` | `/api/pokemon/{identifier}` | Pokemon data (PokeAPI) |
+| `GET` | `/api/weather?location=` | Current weather (Open-Meteo) |
+| `GET` | `/api/time?timezone=` | Current time (IANA timezone) |
+| `GET` | `/api/wikipedia/search?query=` | Wikipedia extracts + citations |
+| `GET` | `/api/pexels/search?query=` | Pexels photos/videos |
+
+## Example: director pipeline
+
+`POST /api/agents/director`
+
+```json
+{
+  "task": "Create a weather briefing short about Johannesburg this week",
+  "context": "Upbeat tone for commuters",
+  "produce_short": true,
+  "short_format": "auto"
+}
+```
+
+Returns research, script, and optional rendered video with Pexels background.
+
+## Example: text video
 
 `POST /api/shorts/generate-text-video`
 
@@ -153,240 +226,15 @@ npm run preview  # preview the production build
 }
 ```
 
-`background_color` can be omitted to select a random color. The generated MP4
-is `1080x1920` at 30 FPS.
-
-## Generate an ElevenLabs Sound Video
-
-`POST /api/shorts/generate-sound-video`
-
-```json
-{
-  "text": "Pikachu stores electricity inside its cheek pouches.",
-  "voice_id": null,
-  "model_id": "eleven_multilingual_v2",
-  "language_code": "en",
-  "background_color": "#F4A261",
-  "text_color": "#FFFFFF",
-  "font_size": 96,
-  "output_name": "pikachu-fact.mp4"
-}
-```
-
-FrameFusion sends the text to ElevenLabs, creates an MP3 narration, matches the
-video duration to the narration, and returns the final MP4. Audio is limited to
-60 seconds.
-
-When `voice_id` is omitted, FrameFusion uses `ELEVENLABS_VOICE_ID` from `.env`
-or its built-in default voice.
-
-## Generate a Video From Uploaded Audio
-
-`POST /api/shorts/generate-audio-video`
-
-This endpoint accepts `multipart/form-data`.
-
-```powershell
-curl.exe -X POST "http://127.0.0.1:8000/api/shorts/generate-audio-video" `
-  -F "audio=@C:\path\to\sound.mp3" `
-  -F "text=Text displayed in the center" `
-  -F "background_color=#264653" `
-  -F "text_color=#FFFFFF" `
-  -F "font_size=96" `
-  -F "output_name=audio-short.mp4" `
-  --output audio-short.mp4
-```
-
-Supported audio formats are AAC, FLAC, M4A, MP3, OGG, and WAV.
-
-## Pokemon Tool
-
-Look up a Pokemon by name:
-
-```http
-GET /api/pokemon/pikachu
-```
-
-Or by National Pokedex number:
-
-```http
-GET /api/pokemon/25
-```
-
-The response includes types, abilities, stats, measurements, description,
-generation, habitat, and artwork URLs. Data is provided by
-[PokeAPI](https://pokeapi.co/).
-
-Agent-callable service function:
-
-```python
-from app.services.pokemon_client import get_pokemon_data
-
-pokemon = get_pokemon_data("pikachu")
-```
-
-## Pokemon Research Agent
-
-`POST /api/agents/pokemon-research`
-
-```json
-{
-  "identifier": "pikachu",
-  "question": "Create a factual briefing for a short video."
-}
-```
-
-The Gemini agent calls the PokeAPI tool and returns:
-
-- A factual summary
-- Verified facts
-- A base-stat profile
-- Notable traits
-- Short-form content hooks
-- A 45–90 word video script
-- Research limitations
-- The exact PokeAPI source data used during research
-
-The agent avoids unsupported claims about moves, evolutions, matchups, games,
-and anime events when those details are not present in the source data.
-
-## History Research Agent
-
-`POST /api/agents/history-research`
-
-```json
-{
-  "topic": "Apollo 11",
-  "question": "Why was the mission historically significant?",
-  "max_sources": 3
-}
-```
-
-The history agent searches English Wikipedia through the official MediaWiki
-API, asks Gemini to analyze the retrieved extracts, and returns:
-
-- A cited historical summary
-- A chronological timeline
-- Key people, causes, and consequences
-- Verified facts and uncertainties
-- Short-form content hooks
-- A cited 60–120 word video script
-- Source titles and URLs
-- The exact source extracts used during research
-
-Wikipedia is a tertiary source. Important historical claims should be checked
-against primary documents or scholarly publications before publishing.
-
-## Wikipedia Tool
-
-```http
-GET /api/wikipedia/search?query=Apollo%2011&max_sources=3
-```
-
-Agent-callable service function:
-
-```python
-from app.services.wikipedia_client import search_wikipedia
-
-sources = search_wikipedia("Apollo 11", max_sources=3)
-```
-
-The history and anime agents both use this general tool, with filtering and
-prompts appropriate to their research domains.
-
-## Anime Research Agent
-
-`POST /api/agents/anime-research`
-
-```json
-{
-  "title": "Fullmetal Alchemist: Brotherhood",
-  "question": "Why is this series notable?",
-  "max_sources": 3,
-  "allow_spoilers": false
-}
-```
-
-The anime researcher returns:
-
-- A cited, spoiler-aware summary and premise
-- Sourced format, release, creator, and studio facts
-- Themes clearly separated from factual claims
-- Verified facts and short-form hooks
-- A cited 60–120 word video script
-- Source titles, URLs, and exact extracts
-
-Wikipedia remains a tertiary source. Official sites and specialist anime
-databases may provide more complete production and episode information.
-
-## Time Tool
-
-```http
-GET /api/time?timezone=Africa/Johannesburg
-```
-
-Use an IANA timezone such as `UTC`, `Africa/Johannesburg`, or
-`America/New_York`.
-
-Agent-callable service function:
-
-```python
-from app.services.time_tool import get_current_time
-
-current_time = get_current_time("Africa/Johannesburg")
-```
-
-## Weather Tool
-
-```http
-GET /api/weather?location=Johannesburg
-```
-
-The response includes temperature, apparent temperature, conditions, humidity,
-precipitation, cloud cover, and wind information. Weather and geocoding data
-are provided by [Open-Meteo](https://open-meteo.com/).
-
-Agent-callable service function:
-
-```python
-from app.services.weather_client import get_current_weather
-
-weather = get_current_weather("Johannesburg")
-```
-
-## Weather Research Agent
-
-`POST /api/agents/weather-research`
-
-```json
-{
-  "location": "Johannesburg",
-  "question": "Is tomorrow suitable for an outdoor walk?",
-  "forecast_days": 3
-}
-```
-
-The Gemini agent calls the Open-Meteo weather tool, evaluates the current
-conditions and forecast, and returns a structured report with:
-
-- A concise summary
-- Current conditions
-- One outlook item per forecast day
-- Weather risks
-- Practical recommendations
-- Data limitations
-- The exact Open-Meteo source data used during research
-
-This endpoint requires `GEMINI_API_KEY` in `.env`. You can optionally set
-`GEMINI_MODEL`; the default is `gemini-2.5-flash`.
+Output is `1080x1920` at 30 FPS. Omit `background_color` for a random palette color.
 
 ## Notes
 
-- Generated files are temporary and are deleted after the response completes.
-- Text is automatically wrapped and scaled to fit the vertical frame.
-- Colors must use the `#RRGGBB` format.
-- Output filenames must end in `.mp4` and cannot contain a path.
-- External services may enforce their own rate limits and usage charges.
+- Generated MP4s live in `api/generated/` and persist until manually removed.
+- Chat history is browser-local only — not synced across devices.
+- Output filenames must end in `.mp4` and cannot contain path separators.
+- Colors use `#RRGGBB` format.
+- External APIs (Gemini, Pexels, ElevenLabs) have their own rate limits and billing.
 
 ## License
 

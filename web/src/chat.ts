@@ -1,19 +1,27 @@
 import {
   checkApiConnection,
+  listGeneratedVideos,
   resolveMediaUrl,
   sendChat,
   type StoredChatMessage,
 } from './api/client.ts'
 import {
+  deleteChat,
   getActiveChat,
   listRecentChats,
   loadChatStore,
+  renameChat,
   saveChatStore,
   startNewChat,
   switchChat,
   upsertActiveChat,
   type SavedChat,
 } from './chatStorage.ts'
+import {
+  collectMediaFromChats,
+  mergeMediaItems,
+  type MediaItem,
+} from './mediaLibrary.ts'
 import { renderMarkdown } from './markdown.ts'
 import './chat.css'
 
@@ -113,6 +121,29 @@ function removeThinkingIndicator(log: HTMLElement): void {
   log.querySelector('.chat-thinking')?.remove()
 }
 
+function renderMediaCard(item: MediaItem): string {
+  const src = resolveMediaUrl(item.url)
+  const duration =
+    item.duration_seconds != null
+      ? `${Math.round(item.duration_seconds)}s`
+      : ''
+  const source = item.sourceChatTitle
+    ? `<p class="media-card-source">From chat: ${escapeHtml(item.sourceChatTitle)}</p>`
+    : ''
+
+  return `
+    <article class="media-card">
+      <div class="media-card-header">
+        <p class="media-card-title">${escapeHtml(item.filename)}</p>
+        ${duration ? `<span class="media-card-meta">${duration}</span>` : ''}
+      </div>
+      <video controls playsinline preload="metadata" src="${escapeHtml(src)}"></video>
+      ${source}
+      <a class="media-card-download" href="${escapeHtml(src)}" download="${escapeHtml(item.filename)}">Download MP4</a>
+    </article>
+  `
+}
+
 export async function setupAgentChat(root: HTMLElement): Promise<void> {
   root.innerHTML = `
     <div class="chat-app">
@@ -128,18 +159,14 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
           </button>
         </div>
 
-        <nav class="sidebar-nav" aria-label="Chat navigation">
-          <a class="sidebar-link active" href="#" aria-current="page">
+        <nav class="sidebar-nav" aria-label="Main navigation">
+          <a class="sidebar-link active" href="#" data-view="chat" aria-current="page">
             <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.75" d="M4 6h16M4 12h10M4 18h14"/></svg>
             Chats
           </a>
-          <a class="sidebar-link" href="#">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.75" d="M3 7h18v10H3V7zm11-4 4 4 4-4v4h-8V3z"/></svg>
-            Projects
-          </a>
-          <a class="sidebar-link" href="#">
-            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.75" d="M12 3l2.2 6.8H21l-5.5 4 2.2 6.8L12 16.6 6.3 20.6l2.2-6.8L3 9.8h6.8L12 3z"/></svg>
-            Tools
+          <a class="sidebar-link" href="#" data-view="media">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.75" d="M4 7h16v10H4V7zm4-4h8v4H8V3z"/></svg>
+            Media
           </a>
         </nav>
 
@@ -160,38 +187,47 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
       </aside>
 
       <main class="chat-main">
-        <div class="chat-greeting" id="chat-greeting">
-          <span class="greeting-icon" aria-hidden="true">✦</span>
-          <h1>${getGreeting()}</h1>
-          <p class="greeting-subtitle">I'm Framey — FrameFusion's AI for short-form video.</p>
-        </div>
+        <div id="chat-view" class="chat-view">
+          <div class="chat-greeting" id="chat-greeting">
+            <h1>${getGreeting()}</h1>
+            <p class="greeting-subtitle">I'm Framey — FrameFusion's AI for short-form video.</p>
+          </div>
 
-        <div id="chat-log" class="chat-log" aria-live="polite"></div>
+          <div id="chat-log" class="chat-log" aria-live="polite"></div>
 
-        <div class="chat-composer-wrap">
-          <form id="chat-form" class="chat-form">
-            <textarea
-              id="chat-input"
-              rows="1"
-              maxlength="8000"
-              placeholder="Ask Framey anything…"
-              autocomplete="off"
-            ></textarea>
-            <div class="chat-form-actions">
-              <button id="chat-send" type="submit" class="chat-send" aria-label="Send message">
-                <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-                  <path fill="currentColor" d="M3.4 20.6 21 12 3.4 3.4l2.8 7.2L17 12l-10.8 1.4z"/>
-                </svg>
-              </button>
+          <div class="chat-composer-wrap">
+            <form id="chat-form" class="chat-form">
+              <textarea
+                id="chat-input"
+                rows="1"
+                maxlength="8000"
+                placeholder="Ask Framey anything…"
+                autocomplete="off"
+              ></textarea>
+              <div class="chat-form-actions">
+                <button id="chat-send" type="submit" class="chat-send" aria-label="Send message">
+                  <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+                    <path fill="currentColor" d="M3.4 20.6 21 12 3.4 3.4l2.8 7.2L17 12l-10.8 1.4z"/>
+                  </svg>
+                </button>
+              </div>
+            </form>
+            <div class="chat-suggestions" id="chat-suggestions">
+              ${SUGGESTIONS.map(
+                (item) =>
+                  `<button type="button" class="chat-pill" data-prompt="${escapeHtml(item.prompt)}">${escapeHtml(item.label)}</button>`,
+              ).join('')}
             </div>
-          </form>
-          <div class="chat-suggestions" id="chat-suggestions">
-            ${SUGGESTIONS.map(
-              (item) =>
-                `<button type="button" class="chat-pill" data-prompt="${escapeHtml(item.prompt)}">${escapeHtml(item.label)}</button>`,
-            ).join('')}
           </div>
         </div>
+
+        <section id="media-view" class="media-view" hidden>
+          <header class="media-header">
+            <h1>Media</h1>
+            <p>All videos created by Framey — from your chats and the server.</p>
+          </header>
+          <div id="media-grid" class="media-grid"></div>
+        </section>
       </main>
     </div>
   `
@@ -206,16 +242,110 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
   const suggestionsEl = root.querySelector<HTMLElement>('#chat-suggestions')!
   const recentsEl = root.querySelector<HTMLElement>('#sidebar-recents')!
   const newChatButton = root.querySelector<HTMLButtonElement>('#chat-new')!
+  const chatView = root.querySelector<HTMLElement>('#chat-view')!
+  const mediaView = root.querySelector<HTMLElement>('#media-view')!
+  const mediaGrid = root.querySelector<HTMLElement>('#media-grid')!
+  const navLinks = root.querySelectorAll<HTMLAnchorElement>('.sidebar-link[data-view]')
 
   let store = loadChatStore()
   let messages: StoredChatMessage[] = [...getActiveChat(store).messages]
   let isSending = false
   let apiOnline = false
+  let activeView: 'chat' | 'media' = 'chat'
+  let openMenuChatId: string | null = null
+  let renamingChatId: string | null = null
+
+  function closeChatMenu(): void {
+    if (!openMenuChatId) {
+      return
+    }
+    openMenuChatId = null
+    renderRecents()
+  }
+
+  function startRename(chatId: string): void {
+    openMenuChatId = null
+    renamingChatId = chatId
+    renderRecents()
+    const input = recentsEl.querySelector<HTMLInputElement>(
+      `[data-rename-input="${chatId}"]`,
+    )
+    input?.focus()
+    input?.select()
+  }
+
+  function commitRename(chatId: string, value: string): void {
+    if (renamingChatId !== chatId) {
+      return
+    }
+    store = renameChat(store, chatId, value)
+    saveChatStore(store)
+    renamingChatId = null
+    renderRecents()
+    if (activeView === 'media') {
+      void renderMediaLibrary()
+    }
+  }
+
+  function cancelRename(): void {
+    renamingChatId = null
+    renderRecents()
+  }
 
   function persistMessages(): void {
     store = upsertActiveChat(store, messages)
     saveChatStore(store)
     renderRecents()
+    if (activeView === 'media') {
+      void renderMediaLibrary()
+    }
+  }
+
+  function setView(view: 'chat' | 'media'): void {
+    activeView = view
+    chatView.hidden = view !== 'chat'
+    mediaView.hidden = view !== 'media'
+
+    navLinks.forEach((link) => {
+      const isActive = link.dataset.view === view
+      link.classList.toggle('active', isActive)
+      if (isActive) {
+        link.setAttribute('aria-current', 'page')
+      } else {
+        link.removeAttribute('aria-current')
+      }
+    })
+
+    if (view === 'media') {
+      void renderMediaLibrary()
+    }
+  }
+
+  async function renderMediaLibrary(): Promise<void> {
+    const localItems = collectMediaFromChats(store.chats)
+    let serverItems: MediaItem[] = []
+
+    if (apiOnline) {
+      try {
+        const videos = await listGeneratedVideos()
+        serverItems = videos.map((video) => ({
+          url: video.url,
+          filename: video.filename,
+          createdAt: video.created_at * 1000,
+        }))
+      } catch {
+        // Fall back to chat attachments only.
+      }
+    }
+
+    const items = mergeMediaItems(localItems, serverItems)
+    if (!items.length) {
+      mediaGrid.innerHTML =
+        '<p class="media-empty">No videos yet. Ask Framey to create a short or b-roll montage.</p>'
+      return
+    }
+
+    mediaGrid.innerHTML = items.map(renderMediaCard).join('')
   }
 
   function renderRecents(): void {
@@ -229,17 +359,62 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
     }
 
     recentsEl.innerHTML = chats
-      .map(
-        (chat: SavedChat) => `
-          <button
-            type="button"
-            class="sidebar-chat-item${chat.id === store.activeChatId ? ' active' : ''}"
-            data-chat-id="${escapeHtml(chat.id)}"
-            role="listitem"
-            title="${escapeHtml(chat.title)}"
-          >${escapeHtml(chat.title)}</button>
-        `,
-      )
+      .map((chat: SavedChat) => {
+        const isRenaming = renamingChatId === chat.id
+        const isMenuOpen = openMenuChatId === chat.id
+        const titleControl = isRenaming
+          ? `<input
+              type="text"
+              class="sidebar-chat-rename"
+              data-rename-input="${escapeHtml(chat.id)}"
+              value="${escapeHtml(chat.title)}"
+              maxlength="80"
+              aria-label="Rename chat"
+            />`
+          : `<button
+              type="button"
+              class="sidebar-chat-item${chat.id === store.activeChatId ? ' active' : ''}"
+              data-chat-id="${escapeHtml(chat.id)}"
+              title="${escapeHtml(chat.title)}"
+            >${escapeHtml(chat.title)}</button>`
+
+        return `
+          <div class="sidebar-chat-row" role="listitem">
+            ${titleControl}
+            <div class="sidebar-chat-menu-wrap">
+              <button
+                type="button"
+                class="sidebar-chat-menu-btn"
+                data-menu-chat-id="${escapeHtml(chat.id)}"
+                aria-label="Chat options"
+                aria-expanded="${isMenuOpen ? 'true' : 'false'}"
+              >
+                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                  <circle cx="12" cy="5" r="1.75" fill="currentColor"/>
+                  <circle cx="12" cy="12" r="1.75" fill="currentColor"/>
+                  <circle cx="12" cy="19" r="1.75" fill="currentColor"/>
+                </svg>
+              </button>
+              <div class="sidebar-chat-menu${isMenuOpen ? ' open' : ''}" role="menu">
+                <button
+                  type="button"
+                  class="sidebar-chat-menu-item"
+                  role="menuitem"
+                  data-chat-action="rename"
+                  data-chat-id="${escapeHtml(chat.id)}"
+                >Rename</button>
+                <button
+                  type="button"
+                  class="sidebar-chat-menu-item danger"
+                  role="menuitem"
+                  data-chat-action="delete"
+                  data-chat-id="${escapeHtml(chat.id)}"
+                >Delete</button>
+              </div>
+            </div>
+          </div>
+        `
+      })
       .join('')
   }
 
@@ -321,6 +496,9 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
       messages.push(reply)
       persistMessages()
       renderMessages(log, messages)
+      if (reply.attachments?.length) {
+        void renderMediaLibrary()
+      }
     } catch (error) {
       const detail =
         error instanceof Error ? error.message : 'Something went wrong.'
@@ -352,6 +530,7 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
   })
 
   newChatButton.addEventListener('click', () => {
+    setView('chat')
     store = startNewChat(store)
     saveChatStore(store)
     loadActiveChat()
@@ -359,12 +538,51 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
   })
 
   recentsEl.addEventListener('click', (event) => {
+    const actionTarget = (event.target as HTMLElement).closest<HTMLButtonElement>(
+      '[data-chat-action]',
+    )
+    if (actionTarget?.dataset.chatAction && actionTarget.dataset.chatId) {
+      event.stopPropagation()
+      if (isSending) {
+        return
+      }
+      const chatId = actionTarget.dataset.chatId
+      if (actionTarget.dataset.chatAction === 'rename') {
+        startRename(chatId)
+        return
+      }
+      if (actionTarget.dataset.chatAction === 'delete') {
+        openMenuChatId = null
+        renamingChatId = null
+        store = deleteChat(store, chatId)
+        saveChatStore(store)
+        loadActiveChat()
+        if (activeView === 'media') {
+          void renderMediaLibrary()
+        }
+      }
+      return
+    }
+
+    const menuTarget = (event.target as HTMLElement).closest<HTMLButtonElement>(
+      '[data-menu-chat-id]',
+    )
+    if (menuTarget?.dataset.menuChatId) {
+      event.stopPropagation()
+      const chatId = menuTarget.dataset.menuChatId
+      openMenuChatId = openMenuChatId === chatId ? null : chatId
+      renderRecents()
+      return
+    }
+
     const target = (event.target as HTMLElement).closest<HTMLButtonElement>(
       '[data-chat-id]',
     )
     if (!target?.dataset.chatId || isSending) {
       return
     }
+    closeChatMenu()
+    setView('chat')
     const next = switchChat(store, target.dataset.chatId)
     if (!next) {
       return
@@ -375,8 +593,50 @@ export async function setupAgentChat(root: HTMLElement): Promise<void> {
     messageInput.focus()
   })
 
-  root.querySelectorAll<HTMLAnchorElement>('.sidebar-link').forEach((link) => {
-    link.addEventListener('click', (event) => event.preventDefault())
+  recentsEl.addEventListener('keydown', (event) => {
+    const input = event.target as HTMLInputElement
+    if (!input.matches('.sidebar-chat-rename') || !input.dataset.renameInput) {
+      return
+    }
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      commitRename(input.dataset.renameInput, input.value)
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      cancelRename()
+    }
+  })
+
+  recentsEl.addEventListener('focusout', (event) => {
+    const input = event.target as HTMLInputElement
+    if (!input.matches('.sidebar-chat-rename') || !input.dataset.renameInput) {
+      return
+    }
+    const related = event.relatedTarget as Node | null
+    if (related && recentsEl.contains(related)) {
+      return
+    }
+    commitRename(input.dataset.renameInput, input.value)
+  })
+
+  document.addEventListener('click', (event) => {
+    if (!(event.target instanceof Node)) {
+      return
+    }
+    if (recentsEl.contains(event.target)) {
+      return
+    }
+    closeChatMenu()
+  })
+
+  navLinks.forEach((link) => {
+    link.addEventListener('click', (event) => {
+      event.preventDefault()
+      const view = link.dataset.view
+      if (view === 'chat' || view === 'media') {
+        setView(view)
+      }
+    })
   })
 
   updateLayout()

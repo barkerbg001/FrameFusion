@@ -8,6 +8,7 @@ export interface SavedChat {
   title: string
   updatedAt: number
   messages: StoredChatMessage[]
+  titleLocked?: boolean
 }
 
 interface ChatStore {
@@ -65,6 +66,7 @@ function normalizeStore(raw: unknown): ChatStore {
       title: typeof chat.title === 'string' ? chat.title : deriveTitle(chat.messages),
       updatedAt: typeof chat.updatedAt === 'number' ? chat.updatedAt : Date.now(),
       messages: chat.messages,
+      titleLocked: Boolean(chat.titleLocked),
     }))
 
   if (!chats.length) {
@@ -107,10 +109,14 @@ export function upsertActiveChat(
   messages: StoredChatMessage[],
 ): ChatStore {
   const now = Date.now()
-  const title = deriveTitle(messages)
   const chats = store.chats.map((chat) =>
     chat.id === store.activeChatId
-      ? { ...chat, messages, title, updatedAt: now }
+      ? {
+          ...chat,
+          messages,
+          title: chat.titleLocked ? chat.title : deriveTitle(messages),
+          updatedAt: now,
+        }
       : chat,
   )
 
@@ -146,6 +152,42 @@ export function switchChat(store: ChatStore, chatId: string): ChatStore | null {
     return null
   }
   return { ...store, activeChatId: chatId }
+}
+
+export function deleteChat(store: ChatStore, chatId: string): ChatStore {
+  const remaining = store.chats.filter((chat) => chat.id !== chatId)
+  if (!remaining.length) {
+    return emptyStore()
+  }
+
+  return {
+    activeChatId:
+      store.activeChatId === chatId ? remaining[0]!.id : store.activeChatId,
+    chats: remaining,
+  }
+}
+
+export function renameChat(
+  store: ChatStore,
+  chatId: string,
+  title: string,
+): ChatStore {
+  const trimmed = title.trim().replace(/\s+/g, ' ')
+  const nextTitle = (trimmed || 'New chat').slice(0, 80)
+
+  return {
+    ...store,
+    chats: store.chats.map((chat) =>
+      chat.id === chatId
+        ? {
+            ...chat,
+            title: nextTitle,
+            titleLocked: true,
+            updatedAt: Date.now(),
+          }
+        : chat,
+    ),
+  }
 }
 
 export function listRecentChats(store: ChatStore): SavedChat[] {
