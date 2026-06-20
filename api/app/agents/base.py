@@ -5,13 +5,14 @@ from typing import Any, Callable, Dict, List
 from dotenv import load_dotenv
 from google import genai
 
-from app.services.output_filename import resolve_output_name
+from app.services.output_filename import resolve_music_output_name, resolve_output_name
 from app.services.pexels_client import search_pexels
 from app.services.pexels_footage import (
     PexelsFootageError,
     download_pexels_clips,
 )
 from app.services.footage_stitcher import FootageStitcherError, stitch_footage_clips
+from app.services.music_composer import compose_music
 from app.services.video_audio import VideoAudioError, add_audio_file_to_video, add_narration_to_video
 from app.services.pokemon_client import get_pokemon_data
 from app.services.time_tool import get_current_time
@@ -334,6 +335,38 @@ def add_audio_file_to_video_tool(
     )
 
 
+def generate_music_tool(
+    prompt: str,
+    duration_seconds: int,
+) -> str:
+    """Generates instrumental background music and saves it to the generated folder.
+
+    Args:
+        prompt: Mood, genre, and instrumentation description for the track.
+        duration_seconds: Target length from 3 to 600 seconds.
+
+    Returns:
+        A JSON string with output_path, output_name, provider, and duration_seconds.
+    """
+    normalized_prompt = prompt.strip()
+    output_name = resolve_music_output_name(normalized_prompt, default_stem="track")
+    args = {
+        "prompt": normalized_prompt,
+        "duration_seconds": duration_seconds,
+        "output_name": output_name,
+    }
+    return _json_tool_response(
+        "music",
+        args,
+        lambda: compose_music(
+            prompt=normalized_prompt,
+            duration_seconds=duration_seconds,
+            output_name=output_name,
+            force_instrumental=True,
+        ),
+    )
+
+
 def create_lofi_video_tool(
     image_path: str,
     audio_path: str,
@@ -391,6 +424,10 @@ AUDIO_TOOLS = [
     add_audio_file_to_video_tool,
 ]
 
+MUSIC_TOOLS = [
+    generate_music_tool,
+]
+
 LOFI_TOOLS = [
     create_lofi_video_tool,
 ]
@@ -400,6 +437,7 @@ ALL_TOOLS = [
     *SHORT_VIDEO_TOOLS,
     *FOOTAGE_TOOLS,
     *AUDIO_TOOLS,
+    *MUSIC_TOOLS,
     *LOFI_TOOLS,
 ]
 
@@ -408,6 +446,7 @@ TOOL_GROUPS = {
     "short_video": SHORT_VIDEO_TOOLS,
     "footage": FOOTAGE_TOOLS,
     "audio": AUDIO_TOOLS,
+    "music": MUSIC_TOOLS,
     "lofi": LOFI_TOOLS,
     "all": ALL_TOOLS,
 }
@@ -426,6 +465,7 @@ def run_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         "pexels_download": download_pexels_footage_tool,
         "footage_stitch": stitch_pexels_footage_tool,
         "video_audio": add_narration_to_video_tool,
+        "music": generate_music_tool,
         "lofi": create_lofi_video_tool,
     }
     tool = tools.get(tool_name)
@@ -434,6 +474,6 @@ def run_tool(tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
             "tool_name must be one of: "
             "time, weather, wikipedia, pokemon, pexels, "
             "text_short, sound_short, pexels_download, footage_stitch, "
-            "video_audio, lofi"
+            "video_audio, music, lofi"
         )
     return json.loads(tool(**arguments))

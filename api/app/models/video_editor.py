@@ -37,6 +37,30 @@ class VideoEditorRequest(BaseModel):
         "auto",
         description="auto, sound for narrated shorts, or silent for text-only",
     )
+    cinematography: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional cinematography report from production pipeline",
+    )
+    visual: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional visual report from production pipeline",
+    )
+    voice: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional voice report from production pipeline",
+    )
+    music_director: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional music director report from production pipeline",
+    )
+    sound_design: Optional[Dict[str, Any]] = Field(
+        None,
+        description="Optional sound design report from production pipeline",
+    )
+    score_with_music: bool = Field(
+        True,
+        description="When true, mux Music Director score on montage/text renders",
+    )
 
     @validator("script")
     def script_must_not_be_blank(cls, value: str) -> str:

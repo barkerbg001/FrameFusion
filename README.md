@@ -10,7 +10,7 @@ montages, narration, and rendered MP4s.
 - **Framey chat** — conversational agent with tool calling (research, video, Pexels)
 - **9:16 vertical videos** — text shorts, narrated shorts, b-roll montages
 - **Pexels b-roll pipeline** — download clips, stitch montages, add narration
-- **Specialist agents** — researcher, screenwriter, video editor, idea generator
+- **Specialist agents** — researcher, screenwriter, video editor, music composer, idea generator
 - **Data tools** — weather, Pokemon, Wikipedia, Pexels, time
 - **Web media library** — browse all generated videos in one place
 - **Local chat history** — conversations saved in the browser; delete anytime
@@ -71,6 +71,8 @@ ELEVENLABS_API_KEY=your_elevenlabs_key
 
 # Optional
 ELEVENLABS_VOICE_ID=your_voice_id
+ELEVENLABS_MUSIC_MODEL=music_v2
+MUSIC_PROVIDER=elevenlabs
 GEMINI_MODEL=gemini-2.5-flash
 ```
 
@@ -78,7 +80,8 @@ GEMINI_MODEL=gemini-2.5-flash
 | --- | --- |
 | `GEMINI_API_KEY` | Framey chat and all Gemini agents |
 | `PEXELS_API_KEY` | Pexels search, b-roll download, backgrounds |
-| `ELEVENLABS_API_KEY` | Narrated shorts and voiceover on b-roll |
+| `ELEVENLABS_API_KEY` | Narrated shorts, voiceover, and AI music (falls back to free procedural music without it) |
+| `MUSIC_PROVIDER` | Optional: `elevenlabs` or `procedural` (auto-detects from API key if unset) |
 
 The `.env` file is gitignored. Do not commit secrets.
 
@@ -135,30 +138,60 @@ attachments and the server's `api/generated/` folder.
 
 ## Agent architecture
 
-```
-Framey (director) — chat + full pipeline orchestration
-  ├── Researcher
-  ├── Screenwriter
-  └── Video Editor
-
-Framey tools (in chat):
-  Research: weather, Pokemon, Wikipedia, time, Pexels search
-  Video: text short, sound short
-  Footage: download Pexels clips, stitch montage
-  Audio: add narration or audio file to existing video
-```
-
-### Pipeline (API)
+FrameFusion is moving toward a **production studio** model. Each role has a
+specialist agent; Framey (chat) coordinates them for fast tasks, while
+`POST /api/agents/production` runs the full crew.
 
 ```
-Research → Screenwrite → Video Editor → MP4
+🎬 Director Agent      — creative vision, assigns specialists, final approval
+📋 Producer Agent      — workflow, deadlines, asset tracking
+🔍 Research Agent      — facts, references, source material
+✍️ Script Agent        — hooks, storytelling, script writing
+📷 Cinematography Agent — shot lists, camera movement, composition
+🎨 Visual Agent        — b-roll direction, visual style, asset plan
+🎤 Voice Agent         — narration plan, voice selection, delivery
+🎼 Music Director Agent — mood per scene, music prompts, transitions
+🔊 Sound Design Agent  — SFX, ambient layers, mix notes
+✂️ Editor Agent        — assembly, timing, cuts, render
+🎞️ Render Agent        — fast script-to-MP4 (legacy produce-short)
+```
+
+**Full production pipeline** (`POST /api/agents/production`):
+
+```
+Director → Producer → Research → Script → Cinematography → Visual
+  → Voice → Music Director → Sound Design → Editor → MP4
+```
+
+The **Editor** reads cinematography (shot list + clip timing), visual (Pexels
+queries + palette), voice (narrated vs silent), and music director (score +
+mux). B-roll briefs cut a multi-clip montage; narrated briefs use the visual
+plan for background and typography.
+
+**Framey chat** (fast path — tools + selective fallbacks):
+
+```
+Research: weather, Pokemon, Wikipedia, time, Pexels search
+Video: text short, sound short
+Footage: download Pexels clips, stitch montage (+ auto music)
+Music: generate background music (ElevenLabs or free fallback)
+Audio: add narration or audio file to existing video
+```
+
+**Legacy quick pipeline** (`POST /api/agents/director`):
+
+```
+Research → Script → Editor → MP4
 ```
 
 ### B-roll montage (chat tools)
 
 ```
-download_pexels_footage → stitch_pexels_footage → add_narration_to_video (optional)
+download_pexels_footage → stitch_pexels_footage → generate_music → add_audio (automatic for silent b-roll)
 ```
+
+Silent b-roll requests (e.g. "generate a Tokyo b-roll video") get subtle instrumental
+background music by default. Say **silent** or **no music** to skip it.
 
 ## API endpoints
 
@@ -170,16 +203,27 @@ download_pexels_footage → stitch_pexels_footage → add_narration_to_video (op
 | `POST` | `/api/chat` | Talk to Framey |
 | `GET` | `/api/chat/videos` | List generated MP4s |
 | `GET` | `/api/chat/videos/{filename}` | Download/stream a video |
+| `GET` | `/api/chat/audio/{filename}` | Download/stream generated music |
 
 ### Agents
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `POST` | `/api/agents/director` | Full research → script → edit pipeline |
+| `GET` | `/api/agents/registry` | List all production studio agents |
+| `POST` | `/api/agents/production` | Full studio pipeline (all specialists) |
+| `POST` | `/api/agents/director-brief` | Director creative vision + assignments |
+| `POST` | `/api/agents/workflow` | Producer workflow plan |
+| `POST` | `/api/agents/cinematography` | Shot list and composition |
+| `POST` | `/api/agents/visual` | Visual style and asset plan |
+| `POST` | `/api/agents/voice` | Narration and delivery plan |
+| `POST` | `/api/agents/music-director` | Scene music cues and prompts |
+| `POST` | `/api/agents/sound-design` | SFX and mix suggestions |
+| `POST` | `/api/agents/director` | Legacy research → script → edit pipeline |
 | `POST` | `/api/agents/research` | Unified research report |
 | `POST` | `/api/agents/screenwrite` | Short-form script |
 | `POST` | `/api/agents/edit-video` | Edit and render a video |
-| `POST` | `/api/agents/produce-short` | Render from script (no editor) |
+| `POST` | `/api/agents/compose-music` | Generate background music (execution) |
+| `POST` | `/api/agents/produce-short` | Render from script (Render Agent) |
 | `POST` | `/api/agents/ideas` | Brainstorm short-form ideas |
 
 ### Video & data tools

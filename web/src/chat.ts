@@ -69,14 +69,19 @@ function renderAttachments(message: StoredChatMessage): string {
             attachment.duration_seconds != null
               ? `<span class="attachment-meta">${Math.round(attachment.duration_seconds)}s</span>`
               : ''
+          const isAudio = attachment.type === 'audio'
+          const media = isAudio
+            ? `<audio class="attachment-audio" controls preload="metadata" src="${escapeHtml(src)}"></audio>`
+            : `<video class="attachment-video" controls playsinline preload="metadata" src="${escapeHtml(src)}"></video>`
+          const downloadLabel = isAudio ? 'Download audio' : 'Download MP4'
           return `
             <div class="chat-attachment">
               <div class="attachment-header">
                 <span class="attachment-name">${escapeHtml(attachment.filename)}</span>
                 ${duration}
               </div>
-              <video class="attachment-video" controls playsinline preload="metadata" src="${escapeHtml(src)}"></video>
-              <a class="attachment-download" href="${escapeHtml(src)}" download="${escapeHtml(attachment.filename)}">Download MP4</a>
+              ${media}
+              <a class="attachment-download" href="${escapeHtml(src)}" download="${escapeHtml(attachment.filename)}">${downloadLabel}</a>
             </div>
           `
         })

@@ -73,3 +73,35 @@ def get_chat_video(file_name: str) -> FileResponse:
         media_type="video/mp4",
         filename=download_name,
     )
+
+
+@router.get("/audio/{file_name}")
+def get_chat_audio(file_name: str) -> FileResponse:
+    if (
+        not file_name
+        or file_name != file_name.split("/")[-1]
+        or file_name != file_name.split("\\")[-1]
+        or ".." in file_name
+    ):
+        raise HTTPException(status_code=400, detail="Invalid file name")
+
+    generated_root = GENERATED_DIR.resolve()
+    audio_path = (GENERATED_DIR / file_name).resolve()
+
+    if audio_path.parent != generated_root or not audio_path.is_file():
+        raise HTTPException(status_code=404, detail="Audio not found")
+
+    suffix = audio_path.suffix.lower()
+    media_types = {
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".m4a": "audio/mp4",
+        ".aac": "audio/aac",
+    }
+    media_type = media_types.get(suffix, "application/octet-stream")
+    download_name = file_name.split("_", 1)[-1] if "_" in file_name else file_name
+    return FileResponse(
+        path=audio_path,
+        media_type=media_type,
+        filename=download_name,
+    )

@@ -12,7 +12,7 @@ class ChatMessage(BaseModel):
 
 
 class ChatAttachment(BaseModel):
-    type: Literal["video"] = "video"
+    type: Literal["video", "audio"] = "video"
     url: str
     filename: str
     duration_seconds: float | None = None

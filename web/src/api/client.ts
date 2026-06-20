@@ -29,7 +29,7 @@ export interface ChatMessage {
 }
 
 export interface ChatAttachment {
-  type: 'video'
+  type: 'video' | 'audio'
   url: string
   filename: string
   duration_seconds?: number | null

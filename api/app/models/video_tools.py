@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, validator
 
 
 class VideoProductionResult(BaseModel):
-    video_type: Literal["text_short", "sound_short", "lofi"]
+    video_type: Literal["text_short", "sound_short", "lofi", "footage_stitch", "video_audio"]
     output_path: str
     output_name: str
     width: int
