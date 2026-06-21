@@ -29,7 +29,7 @@ export interface ChatMessage {
 }
 
 export interface ChatAttachment {
-  type: 'video'
+  type: 'video' | 'audio'
   url: string
   filename: string
   duration_seconds?: number | null
@@ -44,6 +44,12 @@ export interface ChatResponse {
   attachments?: ChatAttachment[]
 }
 
+export interface ServerVideoItem {
+  url: string
+  filename: string
+  created_at: number
+}
+
 export async function checkApiConnection(): Promise<boolean> {
   try {
     await apiFetch('/api/chat/health')
@@ -55,6 +61,11 @@ export async function checkApiConnection(): Promise<boolean> {
 
 export function resolveMediaUrl(path: string): string {
   return `${API_URL}${path}`
+}
+
+export async function listGeneratedVideos(): Promise<ServerVideoItem[]> {
+  const response = await apiFetch('/api/chat/videos')
+  return (await response.json()) as ServerVideoItem[]
 }
 
 export async function sendChat(

@@ -12,7 +12,7 @@ class ChatMessage(BaseModel):
 
 
 class ChatAttachment(BaseModel):
-    type: Literal["video"] = "video"
+    type: Literal["video", "audio"] = "video"
     url: str
     filename: str
     duration_seconds: float | None = None
@@ -30,3 +30,9 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     message: ChatMessage
     attachments: list[ChatAttachment] = Field(default_factory=list)
+
+
+class VideoListItem(BaseModel):
+    url: str
+    filename: str
+    created_at: int

@@ -36,7 +36,7 @@ class VideoIdea(BaseModel):
     hook: str
     concept: str
     research_task: str = Field(
-        description="Task text ready to pass to the researcher or director agent",
+        description="Task text ready to pass to the researcher or Framey",
     )
     suggested_format: ShortFormat = "auto"
     visual_angle: str

@@ -99,3 +99,13 @@ def resolve_output_name(source_text: str, default_stem: str = "short") -> str:
         return slugify_filename(cleaned)
 
     return _validate_safe_filename(f"{default_stem}.mp4")
+
+
+def resolve_music_output_name(source_text: str, default_stem: str = "track") -> str:
+    """Derive an audio filename from brief or prompt text."""
+    combined = " ".join(source_text.strip().split())
+    cleaned = _clean_task_for_slug(combined) if combined else ""
+    if cleaned:
+        stem = slugify_filename(cleaned).removesuffix(".mp4")
+        return f"{stem}.mp3"
+    return f"{default_stem}.mp3"

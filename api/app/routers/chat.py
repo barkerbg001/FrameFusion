@@ -1,10 +1,11 @@
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
 
 from app.agents.director_agent import DirectorAgentError, run_director_chat
-from app.models.chat import ChatAttachment, ChatMessage, ChatRequest, ChatResponse
+from app.models.chat import ChatAttachment, ChatMessage, ChatRequest, ChatResponse, VideoListItem
 from app.services.video_producer import GENERATED_DIR
 
 router = APIRouter()
@@ -13,6 +14,27 @@ router = APIRouter()
 @router.get("/health")
 def chat_health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@router.get("/videos", response_model=list[VideoListItem])
+def list_chat_videos() -> list[VideoListItem]:
+    GENERATED_DIR.mkdir(parents=True, exist_ok=True)
+    items: list[VideoListItem] = []
+    for path in sorted(
+        GENERATED_DIR.glob("*.mp4"),
+        key=lambda item: item.stat().st_mtime,
+        reverse=True,
+    ):
+        file_name = path.name
+        download_name = file_name.split("_", 1)[-1] if "_" in file_name else file_name
+        items.append(
+            VideoListItem(
+                url=f"/api/chat/videos/{quote(file_name)}",
+                filename=download_name,
+                created_at=int(path.stat().st_mtime),
+            )
+        )
+    return items
 
 
 @router.post("", response_model=ChatResponse)
@@ -49,5 +71,37 @@ def get_chat_video(file_name: str) -> FileResponse:
     return FileResponse(
         path=video_path,
         media_type="video/mp4",
+        filename=download_name,
+    )
+
+
+@router.get("/audio/{file_name}")
+def get_chat_audio(file_name: str) -> FileResponse:
+    if (
+        not file_name
+        or file_name != file_name.split("/")[-1]
+        or file_name != file_name.split("\\")[-1]
+        or ".." in file_name
+    ):
+        raise HTTPException(status_code=400, detail="Invalid file name")
+
+    generated_root = GENERATED_DIR.resolve()
+    audio_path = (GENERATED_DIR / file_name).resolve()
+
+    if audio_path.parent != generated_root or not audio_path.is_file():
+        raise HTTPException(status_code=404, detail="Audio not found")
+
+    suffix = audio_path.suffix.lower()
+    media_types = {
+        ".mp3": "audio/mpeg",
+        ".wav": "audio/wav",
+        ".m4a": "audio/mp4",
+        ".aac": "audio/aac",
+    }
+    media_type = media_types.get(suffix, "application/octet-stream")
+    download_name = file_name.split("_", 1)[-1] if "_" in file_name else file_name
+    return FileResponse(
+        path=audio_path,
+        media_type=media_type,
         filename=download_name,
     )

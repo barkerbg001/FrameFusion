@@ -1,0 +1,25 @@
+{
+  "name": "framefusion",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "description": "FrameFusion — AI short-form video monorepo",
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
+    "dev:api": "node scripts/run-api.mjs --reload",
+    "dev:web": "npm run dev --prefix web",
+    "start:api": "node scripts/run-api.mjs",
+    "start:web": "npm run preview --prefix web",
+    "build": "npm run build --prefix web",
+    "setup": "npm run setup:web && npm run setup:api",
+    "setup:web": "npm install --prefix web",
+    "setup:api": "node scripts/setup-api.mjs",
+    "test:api": "node scripts/run-api-tool.mjs pytest",
+    "lint:api": "node scripts/run-api-tool.mjs ruff check app tests",
+    "format:api": "node scripts/run-api-tool.mjs ruff format app tests",
+    "typecheck:api": "node scripts/run-api-tool.mjs mypy"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.3"
+  }
+}

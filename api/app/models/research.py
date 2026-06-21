@@ -1,9 +1,18 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
 from app.models.history import HistoryCitation
-from app.models.director import DirectorMediaRecommendation
+
+
+class MediaRecommendation(BaseModel):
+    media_type: str
+    description: str
+    url: str
+    download_url: Optional[str] = None
+    preview_url: Optional[str] = None
+    photographer: Optional[str] = None
+    duration_seconds: Optional[int] = None
 
 
 class ResearchReport(BaseModel):
@@ -13,7 +22,7 @@ class ResearchReport(BaseModel):
     verified_facts: List[str]
     content_hooks: List[str]
     visual_suggestions: List[str]
-    recommended_media: List[DirectorMediaRecommendation]
+    recommended_media: List[MediaRecommendation]
     citations: List[HistoryCitation]
     tools_used: List[str]
     limitations: List[str]

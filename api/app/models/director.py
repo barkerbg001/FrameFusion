@@ -9,16 +9,6 @@ from app.models.video_editor import VideoEditorReport
 ShortFormat = Literal["auto", "sound", "silent"]
 
 
-class DirectorMediaRecommendation(BaseModel):
-    media_type: str
-    description: str
-    url: str
-    download_url: Optional[str] = None
-    preview_url: Optional[str] = None
-    photographer: Optional[str] = None
-    duration_seconds: Optional[int] = None
-
-
 class DirectorRequest(BaseModel):
     task: str = Field(
         ...,

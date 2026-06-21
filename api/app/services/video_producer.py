@@ -8,9 +8,9 @@ from app.services.elevenlabs_client import (
     generate_speech,
 )
 from app.services.text_video_creator import (
-    VIDEO_SIZE,
     create_sound_short,
     create_text_short,
+    split_text_into_screens,
 )
 from app.services.video_creator import create_video_from_images_and_audio
 
@@ -301,9 +301,11 @@ DEFAULT_FONT_SIZE = 96
 DEFAULT_MODEL_ID = "eleven_multilingual_v2"
 
 
-def estimate_text_short_duration(text: str) -> float:
+def estimate_text_short_duration(text: str, font_size: int = DEFAULT_FONT_SIZE) -> float:
+    screens = split_text_into_screens(text, font_size)
     word_count = len(text.split())
-    return min(60.0, max(5.0, word_count / 2.5))
+    per_screen = max(4.0, min(15.0, word_count / max(len(screens), 1) / 2.5))
+    return min(60.0, per_screen * len(screens))
 
 
 def produce_text_short_simple(
