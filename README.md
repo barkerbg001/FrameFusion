@@ -35,6 +35,10 @@ FrameFusion/
 |   |   `-- mediaLibrary.ts  # Media gallery
 |   `-- package.json
 |-- LICENSE
+|-- package.json           # root commands: npm run dev, setup, …
+|-- scripts/
+|   |-- run-api.mjs
+|   `-- setup-api.mjs
 `-- README.md
 ```
 
@@ -53,7 +57,16 @@ FrameFusion/
 
 ## Setup
 
-### API
+From the **repo root**:
+
+```powershell
+npm install
+npm run setup
+```
+
+That installs web dependencies, creates `api/.venv`, and installs Python packages.
+
+### API (manual)
 
 ```powershell
 cd api
@@ -94,22 +107,42 @@ npm install
 
 ## Run
 
-**Terminal 1 — API** (from `api/`):
+From the **repo root** (recommended):
+
+```powershell
+npm install          # once — installs root tooling + run scripts
+npm run setup        # once — web deps + api venv + pip packages
+npm run dev          # API + web together
+```
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | API (port 8000) + web (port 5173) |
+| `npm run dev:api` | API only, with reload |
+| `npm run dev:web` | Web only |
+| `npm run start:api` | API without reload |
+| `npm run build` | Production web build |
+| `npm run setup` | Install web + create `api/.venv` + pip deps |
+
+- App: http://127.0.0.1:5173 (proxies `/api` to the backend)
+- API: http://127.0.0.1:8000
+- Swagger: http://127.0.0.1:8000/docs
+
+The API runner uses `api/.venv` when present, otherwise system `python`.
+
+### Manual (per folder)
+
+**API** (from `api/`):
 
 ```powershell
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-- API: http://127.0.0.1:8000
-- Swagger: http://127.0.0.1:8000/docs
-
-**Terminal 2 — Web** (from `web/`):
+**Web** (from `web/`):
 
 ```powershell
 npm run dev
 ```
-
-- App: http://127.0.0.1:5173 (proxies `/api` to the backend)
 
 ## Web app
 

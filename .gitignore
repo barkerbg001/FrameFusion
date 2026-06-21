@@ -130,6 +130,8 @@ dmypy.json
 
 # --- FrameFusion monorepo ---
 
+node_modules/
+
 # API generated videos (also covered by *.mp4 below)
 api/generated/
 
