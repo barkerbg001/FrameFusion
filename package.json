@@ -17,7 +17,8 @@
     "test:api": "node scripts/run-api-tool.mjs pytest",
     "lint:api": "node scripts/run-api-tool.mjs ruff check app tests",
     "format:api": "node scripts/run-api-tool.mjs ruff format app tests",
-    "typecheck:api": "node scripts/run-api-tool.mjs mypy"
+    "typecheck:api": "node scripts/run-api-tool.mjs mypy",
+    "ci": "npm run build && node scripts/run-api-tool.mjs ruff check tests && node scripts/run-api-tool.mjs ruff format --check tests && npm run test:api"
   },
   "devDependencies": {
     "concurrently": "^10.0.3"
