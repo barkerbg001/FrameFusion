@@ -323,8 +323,6 @@ Use these consistently so issues, PRs, and the GitHub repo stay easy to filter.
 
 ### GitHub repository topics
 
-Add these under **Settings → General → Topics**:
-
 `ai` `video-editing` `short-form-video` `generative-ai` `fastapi` `python` `typescript` `vite` `gemini` `elevenlabs` `pexels` `b-roll` `monorepo`
 
 ### PR and issue labels
