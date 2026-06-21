@@ -1,0 +1,16 @@
+# Local development — includes runtime deps from requirements.txt
+-r requirements.txt
+
+# API server (reload watcher; optional but recommended with --reload)
+watchfiles
+
+# Testing
+pytest
+pytest-asyncio
+httpx
+
+# Lint & format
+ruff
+
+# Type checking
+mypy

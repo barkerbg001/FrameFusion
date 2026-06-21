@@ -13,7 +13,11 @@
     "build": "npm run build --prefix web",
     "setup": "npm run setup:web && npm run setup:api",
     "setup:web": "npm install --prefix web",
-    "setup:api": "node scripts/setup-api.mjs"
+    "setup:api": "node scripts/setup-api.mjs",
+    "test:api": "node scripts/run-api-tool.mjs pytest",
+    "lint:api": "node scripts/run-api-tool.mjs ruff check app tests",
+    "format:api": "node scripts/run-api-tool.mjs ruff format app tests",
+    "typecheck:api": "node scripts/run-api-tool.mjs mypy"
   },
   "devDependencies": {
     "concurrently": "^10.0.3"

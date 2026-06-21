@@ -28,8 +28,8 @@ if (!fs.existsSync(venvPython)) {
   run(systemPython, ['-m', 'venv', venvDir], { cwd: apiDir })
 }
 
-console.log('Installing API dependencies …')
-run(venvPython, ['-m', 'pip', 'install', '-r', 'requirements.txt'], {
+console.log('Installing API dependencies (runtime + dev tools) …')
+run(venvPython, ['-m', 'pip', 'install', '-r', 'requirements-dev.txt'], {
   cwd: apiDir,
 })
 

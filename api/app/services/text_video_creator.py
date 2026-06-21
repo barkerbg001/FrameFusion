@@ -1,5 +1,6 @@
 import os
 import random
+import re
 from typing import Optional
 
 import numpy as np
@@ -19,6 +20,11 @@ except ImportError:
 
 
 VIDEO_SIZE = (1080, 1920)
+MAX_TEXT_SCREENS = 3
+TEXT_MARGIN_X = 160
+TEXT_MARGIN_Y = 320
+TEXT_LINE_SPACING = 24
+MIN_SECONDS_PER_SCREEN = 3.0
 BACKGROUND_COLORS = (
     "#264653",
     "#2A9D8F",
@@ -88,6 +94,163 @@ def _wrap_text(
     return "\n".join(wrapped_lines)
 
 
+def _max_text_width() -> int:
+    return VIDEO_SIZE[0] - TEXT_MARGIN_X
+
+
+def _max_text_height() -> int:
+    return VIDEO_SIZE[1] - TEXT_MARGIN_Y
+
+
+def _text_block_metrics(
+    text: str,
+    font_size: int,
+) -> tuple[str, float, float]:
+    """Return wrapped text, block width, and block height for a 9:16 screen."""
+    image = Image.new("RGB", VIDEO_SIZE)
+    draw = ImageDraw.Draw(image)
+    font = _load_font(font_size)
+    wrapped_text = _wrap_text(draw, text, font, max_width=_max_text_width())
+    bbox = draw.multiline_textbbox(
+        (0, 0),
+        wrapped_text,
+        font=font,
+        spacing=TEXT_LINE_SPACING,
+        align="center",
+        stroke_width=2,
+    )
+    return wrapped_text, bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+
+def text_fits_one_screen(text: str, font_size: int) -> bool:
+    _, _, height = _text_block_metrics(text, font_size)
+    return height <= _max_text_height()
+
+
+def split_text_into_screens(
+    text: str,
+    font_size: int,
+    max_screens: int = MAX_TEXT_SCREENS,
+) -> list[str]:
+    """Split long copy into up to max_screens readable 9:16 text screens."""
+    normalized = " ".join(text.strip().split())
+    if not normalized:
+        return [""]
+    if text_fits_one_screen(normalized, font_size):
+        return [normalized]
+    if max_screens < 2:
+        return [normalized]
+
+    sentences = [
+        sentence.strip()
+        for sentence in re.split(r"(?<=[.!?])\s+", normalized)
+        if sentence.strip()
+    ]
+    if len(sentences) <= 1:
+        sentences = normalized.split()
+
+    screens: list[str] = []
+    current = ""
+
+    def flush_current() -> None:
+        nonlocal current
+        if current.strip():
+            screens.append(current.strip())
+            current = ""
+
+    for sentence in sentences:
+        candidate = f"{current} {sentence}".strip() if current else sentence
+        if text_fits_one_screen(candidate, font_size):
+            current = candidate
+            continue
+
+        flush_current()
+        if text_fits_one_screen(sentence, font_size):
+            current = sentence
+            continue
+
+        words = sentence.split()
+        chunk = ""
+        for word in words:
+            trial = f"{chunk} {word}".strip() if chunk else word
+            if text_fits_one_screen(trial, font_size):
+                chunk = trial
+            else:
+                if chunk:
+                    screens.append(chunk)
+                chunk = word
+                if len(screens) >= max_screens:
+                    break
+        current = chunk
+        if len(screens) >= max_screens:
+            break
+
+    flush_current()
+
+    if len(screens) > max_screens:
+        head = screens[: max_screens - 1]
+        tail = " ".join(screens[max_screens - 1 :])
+        screens = head + split_text_into_screens(tail, font_size, max_screens=1)
+    elif not screens:
+        screens = [normalized]
+
+    if len(screens) == 1 and not text_fits_one_screen(screens[0], font_size):
+        words = screens[0].split()
+        midpoint = max(1, len(words) // 2)
+        left = " ".join(words[:midpoint])
+        right = " ".join(words[midpoint:])
+        if left and right:
+            screens = [left, right]
+
+    validated: list[str] = []
+    for screen in screens[:max_screens]:
+        if text_fits_one_screen(screen, font_size):
+            validated.append(screen)
+            continue
+        words = screen.split()
+        chunk = ""
+        for word in words:
+            trial = f"{chunk} {word}".strip() if chunk else word
+            if text_fits_one_screen(trial, font_size):
+                chunk = trial
+            else:
+                if chunk:
+                    validated.append(chunk)
+                chunk = word
+        if chunk:
+            validated.append(chunk)
+
+    return validated[:max_screens] if validated else [normalized]
+
+
+def _screen_durations(total_seconds: float, screen_count: int) -> list[float]:
+    if screen_count <= 1:
+        return [total_seconds]
+    per_screen = max(MIN_SECONDS_PER_SCREEN, total_seconds / screen_count)
+    durations = [per_screen] * screen_count
+    durations[-1] = max(
+        MIN_SECONDS_PER_SCREEN,
+        total_seconds - per_screen * (screen_count - 1),
+    )
+    return durations
+
+
+def _proportional_screen_durations(
+    screens: list[str],
+    total_seconds: float,
+) -> list[float]:
+    if len(screens) <= 1:
+        return [total_seconds]
+    word_counts = [max(1, len(screen.split())) for screen in screens]
+    total_words = sum(word_counts)
+    durations = [
+        max(MIN_SECONDS_PER_SCREEN, total_seconds * (count / total_words))
+        for count in word_counts
+    ]
+    scale = total_seconds / sum(durations)
+    return [duration * scale for duration in durations]
+
+
 def _create_text_frame(
     text: str,
     background_color: str,
@@ -96,8 +259,8 @@ def _create_text_frame(
 ) -> np.ndarray:
     image = Image.new("RGB", VIDEO_SIZE, background_color)
     draw = ImageDraw.Draw(image)
-    max_text_width = VIDEO_SIZE[0] - 160
-    max_text_height = VIDEO_SIZE[1] - 320
+    max_text_width = VIDEO_SIZE[0] - TEXT_MARGIN_X
+    max_text_height = VIDEO_SIZE[1] - TEXT_MARGIN_Y
 
     for candidate_size in range(max(font_size, 36), 35, -4):
         font = _load_font(candidate_size)
@@ -141,8 +304,8 @@ def _create_text_overlay_frame(
     image = Image.new("RGBA", VIDEO_SIZE, (0, 0, 0, 0))
     draw = ImageDraw.Draw(image)
     draw.rectangle([(0, 0), VIDEO_SIZE], fill=(0, 0, 0, 110))
-    max_text_width = VIDEO_SIZE[0] - 160
-    max_text_height = VIDEO_SIZE[1] - 320
+    max_text_width = VIDEO_SIZE[0] - TEXT_MARGIN_X
+    max_text_height = VIDEO_SIZE[1] - TEXT_MARGIN_Y
 
     for candidate_size in range(max(font_size, 36), 35, -4):
         font = _load_font(candidate_size)
@@ -322,29 +485,39 @@ def create_text_short(
     background_media_path: Optional[str] = None,
     background_media_type: Optional[str] = None,
 ) -> str:
-    clip = None
-    if background_media_path and background_media_type:
-        clip = _compose_short_with_background(
-            text=text,
-            duration_seconds=duration_seconds,
-            background_media_path=background_media_path,
-            background_media_type=background_media_type,
-            text_color=text_color,
-            font_size=font_size,
-        )
-    else:
-        selected_background = background_color or random.choice(BACKGROUND_COLORS)
-        frame = _create_text_frame(
-            text=text,
-            background_color=selected_background,
-            text_color=text_color,
-            font_size=font_size,
-        )
-        clip = ImageClip(frame)
-        clip = _set_clip_fps(_set_clip_duration(clip, duration_seconds), 30)
+    screens = split_text_into_screens(text, font_size)
+    screen_durations = _screen_durations(duration_seconds, len(screens))
+    selected_background = background_color or random.choice(BACKGROUND_COLORS)
+    clips = []
+
+    for screen_text, screen_seconds in zip(screens, screen_durations):
+        if background_media_path and background_media_type:
+            clip = _compose_short_with_background(
+                text=screen_text,
+                duration_seconds=screen_seconds,
+                background_media_path=background_media_path,
+                background_media_type=background_media_type,
+                text_color=text_color,
+                font_size=font_size,
+            )
+        else:
+            frame = _create_text_frame(
+                text=screen_text,
+                background_color=selected_background,
+                text_color=text_color,
+                font_size=font_size,
+            )
+            clip = ImageClip(frame)
+            clip = _set_clip_fps(_set_clip_duration(clip, screen_seconds), 30)
+        clips.append(clip)
+
+    final_clip = clips[0] if len(clips) == 1 else concatenate_videoclips(
+        clips,
+        method="compose",
+    )
 
     try:
-        clip.write_videofile(
+        final_clip.write_videofile(
             output_path,
             codec="libx264",
             fps=30,
@@ -359,7 +532,9 @@ def create_text_short(
             logger=None,
         )
     finally:
-        clip.close()
+        final_clip.close()
+        for clip in clips[1:]:
+            clip.close()
 
     return output_path
 
@@ -386,33 +561,45 @@ def create_sound_short(
                 f"Audio cannot be longer than {max_duration_seconds:g} seconds"
             )
 
-        if background_media_path and background_media_type:
-            video_clip = _compose_short_with_background(
-                text=text,
-                duration_seconds=audio_clip.duration,
-                background_media_path=background_media_path,
-                background_media_type=background_media_type,
-                text_color=text_color,
-                font_size=font_size,
-                audio_path=audio_path,
-            )
-        else:
-            selected_background = background_color or random.choice(BACKGROUND_COLORS)
-            frame = _create_text_frame(
-                text=text,
-                background_color=selected_background,
-                text_color=text_color,
-                font_size=font_size,
-            )
-            video_clip = ImageClip(frame)
-            video_clip = _set_clip_fps(
-                _set_clip_duration(video_clip, audio_clip.duration),
-                30,
-            )
-            if hasattr(video_clip, "with_audio"):
-                video_clip = video_clip.with_audio(audio_clip)
+        screens = split_text_into_screens(text, font_size)
+        screen_durations = _proportional_screen_durations(
+            screens,
+            audio_clip.duration,
+        )
+        clips = []
+        for screen_text, screen_seconds in zip(screens, screen_durations):
+            if background_media_path and background_media_type:
+                clip = _compose_short_with_background(
+                    text=screen_text,
+                    duration_seconds=screen_seconds,
+                    background_media_path=background_media_path,
+                    background_media_type=background_media_type,
+                    text_color=text_color,
+                    font_size=font_size,
+                )
             else:
-                video_clip = video_clip.set_audio(audio_clip)
+                selected_background = background_color or random.choice(
+                    BACKGROUND_COLORS
+                )
+                frame = _create_text_frame(
+                    text=screen_text,
+                    background_color=selected_background,
+                    text_color=text_color,
+                    font_size=font_size,
+                )
+                clip = ImageClip(frame)
+                clip = _set_clip_fps(_set_clip_duration(clip, screen_seconds), 30)
+            clips.append(clip)
+
+        video_clip = (
+            clips[0]
+            if len(clips) == 1
+            else concatenate_videoclips(clips, method="compose")
+        )
+        if hasattr(video_clip, "with_audio"):
+            video_clip = video_clip.with_audio(audio_clip)
+        else:
+            video_clip = video_clip.set_audio(audio_clip)
 
         video_clip.write_videofile(
             output_path,

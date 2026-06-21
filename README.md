@@ -1,79 +1,70 @@
 # FrameFusion
 
-FrameFusion is a monorepo for AI-assisted short-form video creation. The **FastAPI**
-backend in `api/` powers specialist agents and video tools. The **Vite + TypeScript**
-frontend in `web/` provides **Framey** — the chat UI for research, scripting, b-roll
-montages, narration, and rendered MP4s.
+AI-assisted short-form video creation. **Framey** (chat UI in `web/`) talks to a
+**FastAPI** backend (`api/`) that runs specialist agents, Pexels b-roll tools, music
+generation, and MP4 rendering.
 
-## Features
+## Quick start
 
-- **Framey chat** — conversational agent with tool calling (research, video, Pexels)
-- **9:16 vertical videos** — text shorts, narrated shorts, b-roll montages
-- **Pexels b-roll pipeline** — download clips, stitch montages, add narration
-- **Specialist agents** — researcher, screenwriter, video editor, music composer, idea generator
-- **Data tools** — weather, Pokemon, Wikipedia, Pexels, time
-- **Web media library** — browse all generated videos in one place
-- **Local chat history** — conversations saved in the browser; delete anytime
-
-## Project structure
-
-```text
-FrameFusion/
-|-- api/
-|   |-- app/
-|   |   |-- agents/          # Framey (director), researcher, screenwriter, editor, …
-|   |   |-- models/
-|   |   |-- routers/
-|   |   `-- services/
-|   |-- generated/           # Rendered MP4s (gitignored)
-|   |-- requirements.txt
-|   `-- .env
-|-- web/
-|   |-- src/
-|   |   |-- chat.ts          # Framey UI
-|   |   |-- chatStorage.ts   # localStorage chat persistence
-|   |   `-- mediaLibrary.ts  # Media gallery
-|   `-- package.json
-|-- LICENSE
-|-- package.json           # root commands: npm run dev, setup, …
-|-- scripts/
-|   |-- run-api.mjs
-|   `-- setup-api.mjs
-`-- README.md
-```
-
-## Requirements
-
-### API
-
-- Python 3.10+
-- FFmpeg (used by MoviePy)
-- API keys (see below)
-
-### Web
-
-- Node.js 20+
-- npm
-
-## Setup
-
-From the **repo root**:
+**Prerequisites:** Python 3.10+, Node.js 20+, FFmpeg, npm
 
 ```powershell
+git clone https://github.com/your-org/FrameFusion.git
+cd FrameFusion
 npm install
 npm run setup
 ```
 
-That installs web dependencies, creates `api/.venv`, and installs Python packages.
-
-### API (manual)
+Create `api/.env` (see [Configuration](#configuration)), then:
 
 ```powershell
-cd api
+npm run dev
+```
+
+| URL | Purpose |
+| --- | --- |
+| http://127.0.0.1:5173 | Web app (Framey chat) |
+| http://127.0.0.1:8000/docs | API (Swagger) |
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | API + web together |
+| `npm run dev:api` | API only (with reload) |
+| `npm run dev:web` | Web only |
+| `npm run start:api` | API without reload |
+| `npm run build` | Production web build |
+| `npm run setup` | Web deps + `api/.venv` + pip install (incl. dev tools) |
+| `npm run test:api` | Run API pytest suite |
+| `npm run lint:api` | Ruff lint on `api/app` and `api/tests` |
+| `npm run format:api` | Ruff format on `api/app` and `api/tests` |
+| `npm run typecheck:api` | Mypy on `api/app` |
+
+The API runner uses `api/.venv` when present, otherwise system `python`.
+
+<details>
+<summary>Manual setup (without root scripts)</summary>
+
+**API** — from `api/`:
+
+```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+Production / minimal runtime only: `pip install -r requirements.txt`
+
+**Web** — from `web/`:
+
+```powershell
+npm install
+npm run dev
+```
+
+</details>
+
+## Configuration
 
 Create `api/.env`:
 
@@ -93,140 +84,79 @@ GEMINI_MODEL=gemini-2.5-flash
 | --- | --- |
 | `GEMINI_API_KEY` | Framey chat and all Gemini agents |
 | `PEXELS_API_KEY` | Pexels search, b-roll download, backgrounds |
-| `ELEVENLABS_API_KEY` | Narrated shorts, voiceover, and AI music (falls back to free procedural music without it) |
-| `MUSIC_PROVIDER` | Optional: `elevenlabs` or `procedural` (auto-detects from API key if unset) |
+| `ELEVENLABS_API_KEY` | Narrated shorts, voiceover, and AI music (free procedural fallback without it) |
+| `MUSIC_PROVIDER` | Optional: `elevenlabs` or `procedural` |
 
 The `.env` file is gitignored. Do not commit secrets.
 
-### Web
+## Using Framey
 
-```powershell
-cd web
-npm install
-```
+Open http://127.0.0.1:5173 and chat with **Framey** to research topics, create
+text or narrated shorts, or build Pexels b-roll montages. Videos appear inline and
+in the **Media** sidebar.
 
-## Run
-
-From the **repo root** (recommended):
-
-```powershell
-npm install          # once — installs root tooling + run scripts
-npm run setup        # once — web deps + api venv + pip packages
-npm run dev          # API + web together
-```
-
-| Command | What it does |
-| --- | --- |
-| `npm run dev` | API (port 8000) + web (port 5173) |
-| `npm run dev:api` | API only, with reload |
-| `npm run dev:web` | Web only |
-| `npm run start:api` | API without reload |
-| `npm run build` | Production web build |
-| `npm run setup` | Install web + create `api/.venv` + pip deps |
-
-- App: http://127.0.0.1:5173 (proxies `/api` to the backend)
-- API: http://127.0.0.1:8000
-- Swagger: http://127.0.0.1:8000/docs
-
-The API runner uses `api/.venv` when present, otherwise system `python`.
-
-### Manual (per folder)
-
-**API** (from `api/`):
-
-```powershell
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-**Web** (from `web/`):
-
-```powershell
-npm run dev
-```
-
-## Web app
-
-### Framey chat
-
-Talk to Framey to research topics, create text/narrated shorts, or build Pexels b-roll
-montages with optional voiceover. Videos appear inline in the chat and in the **Media**
-library.
-
-Example prompts:
+**Example prompts**
 
 - *Research Pikachu with verified facts for a short video*
 - *Create a narrated short about Claude AI skills*
-- *Create a motivational b-roll montage for a Pokemon video*
+- *Generate a Tokyo b-roll video*
 
-### Chat history
+**Chat history** — stored in browser `localStorage` (`framefusion:chats`). Use the
+**⋮** menu on any chat to rename or delete it.
 
-Conversations are stored in **localStorage** (`framefusion:chats`) in your browser.
-Use the **⋮** menu on any chat in **Recents** to **Rename** or **Delete** it. Renamed
-titles are kept even as the conversation grows.
+**Media library** — sidebar **Media** tab lists every MP4 from chat attachments and
+`api/generated/`.
 
-### Media library
+**B-roll + music** — silent b-roll montages get background music automatically.
+Say *silent* or *no music* to skip it.
 
-Open **Media** in the sidebar to see every MP4 Framey created — merged from chat
-attachments and the server's `api/generated/` folder.
+## Architecture
 
-## Agent architecture
+FrameFusion uses a **production studio** model: specialist agents plan and render
+each part of a short. Framey (chat) uses a fast tool path; `POST /api/agents/production`
+runs the full crew.
 
-FrameFusion is moving toward a **production studio** model. Each role has a
-specialist agent; Framey (chat) coordinates them for fast tasks, while
-`POST /api/agents/production` runs the full crew.
+### Agents
 
-```
-🎬 Director Agent      — creative vision, assigns specialists, final approval
-📋 Producer Agent      — workflow, deadlines, asset tracking
-🔍 Research Agent      — facts, references, source material
-✍️ Script Agent        — hooks, storytelling, script writing
-📷 Cinematography Agent — shot lists, camera movement, composition
-🎨 Visual Agent        — b-roll direction, visual style, asset plan
-🎤 Voice Agent         — narration plan, voice selection, delivery
-🎼 Music Director Agent — mood per scene, music prompts, transitions
-🔊 Sound Design Agent  — SFX, ambient layers, mix notes
-✂️ Editor Agent        — assembly, timing, cuts, render
-🎞️ Render Agent        — fast script-to-MP4 (legacy produce-short)
-```
+| Agent | Role |
+| --- | --- |
+| 🎬 Director | Creative vision, assigns specialists, final approval |
+| 📋 Producer | Workflow, deadlines, asset tracking |
+| 🔍 Research | Facts, references, source material |
+| ✍️ Script | Hooks, storytelling, script writing |
+| 📷 Cinematography | Shot lists, camera movement, composition |
+| 🎨 Visual | B-roll direction, visual style, asset plan |
+| 🎤 Voice | Narration plan, voice selection, delivery |
+| 🎼 Music Director | Mood per scene, music prompts, transitions |
+| 🔊 Sound Design | SFX, ambient layers, mix notes |
+| ✂️ Editor | Assembly, timing, cuts, render |
+| 🎞️ Render | Fast script-to-MP4 (`produce-short`) |
 
-**Full production pipeline** (`POST /api/agents/production`):
+### Pipelines
 
-```
+**Full production** — `POST /api/agents/production`
+
+```text
 Director → Producer → Research → Script → Cinematography → Visual
   → Voice → Music Director → Sound Design → Editor → MP4
 ```
 
-The **Editor** reads cinematography (shot list + clip timing), visual (Pexels
-queries + palette), voice (narrated vs silent), and music director (score +
-mux). B-roll briefs cut a multi-clip montage; narrated briefs use the visual
-plan for background and typography.
+The Editor uses cinematography (shot timing), visual (Pexels + palette), voice
+(narrated vs silent), and music director (score + mux).
 
-**Framey chat** (fast path — tools + selective fallbacks):
+**Framey chat** — tools and fallbacks for quick tasks
 
-```
-Research: weather, Pokemon, Wikipedia, time, Pexels search
-Video: text short, sound short
-Footage: download Pexels clips, stitch montage (+ auto music)
-Music: generate background music (ElevenLabs or free fallback)
-Audio: add narration or audio file to existing video
+```text
+Research → text/sound short | Pexels download → stitch → music → mux
 ```
 
-**Legacy quick pipeline** (`POST /api/agents/director`):
+**Legacy** — `POST /api/agents/director`
 
-```
+```text
 Research → Script → Editor → MP4
 ```
 
-### B-roll montage (chat tools)
-
-```
-download_pexels_footage → stitch_pexels_footage → generate_music → add_audio (automatic for silent b-roll)
-```
-
-Silent b-roll requests (e.g. "generate a Tokyo b-roll video") get subtle instrumental
-background music by default. Say **silent** or **no music** to skip it.
-
-## API endpoints
+## API reference
 
 ### Chat & media
 
@@ -235,29 +165,29 @@ background music by default. Say **silent** or **no music** to skip it.
 | `GET` | `/api/chat/health` | Health check |
 | `POST` | `/api/chat` | Talk to Framey |
 | `GET` | `/api/chat/videos` | List generated MP4s |
-| `GET` | `/api/chat/videos/{filename}` | Download/stream a video |
-| `GET` | `/api/chat/audio/{filename}` | Download/stream generated music |
+| `GET` | `/api/chat/videos/{filename}` | Stream/download a video |
+| `GET` | `/api/chat/audio/{filename}` | Stream/download music |
 
 ### Agents
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
-| `GET` | `/api/agents/registry` | List all production studio agents |
-| `POST` | `/api/agents/production` | Full studio pipeline (all specialists) |
-| `POST` | `/api/agents/director-brief` | Director creative vision + assignments |
+| `GET` | `/api/agents/registry` | List production studio agents |
+| `POST` | `/api/agents/production` | Full studio pipeline |
+| `POST` | `/api/agents/director-brief` | Director vision + assignments |
 | `POST` | `/api/agents/workflow` | Producer workflow plan |
 | `POST` | `/api/agents/cinematography` | Shot list and composition |
 | `POST` | `/api/agents/visual` | Visual style and asset plan |
 | `POST` | `/api/agents/voice` | Narration and delivery plan |
-| `POST` | `/api/agents/music-director` | Scene music cues and prompts |
+| `POST` | `/api/agents/music-director` | Scene music cues |
 | `POST` | `/api/agents/sound-design` | SFX and mix suggestions |
-| `POST` | `/api/agents/director` | Legacy research → script → edit pipeline |
-| `POST` | `/api/agents/research` | Unified research report |
+| `POST` | `/api/agents/director` | Legacy research → script → edit |
+| `POST` | `/api/agents/research` | Research report |
 | `POST` | `/api/agents/screenwrite` | Short-form script |
 | `POST` | `/api/agents/edit-video` | Edit and render a video |
-| `POST` | `/api/agents/compose-music` | Generate background music (execution) |
-| `POST` | `/api/agents/produce-short` | Render from script (Render Agent) |
-| `POST` | `/api/agents/ideas` | Brainstorm short-form ideas |
+| `POST` | `/api/agents/compose-music` | Generate background music |
+| `POST` | `/api/agents/produce-short` | Render from script |
+| `POST` | `/api/agents/ideas` | Brainstorm video ideas |
 
 ### Video & data tools
 
@@ -267,13 +197,27 @@ background music by default. Say **silent** or **no music** to skip it.
 | `POST` | `/api/shorts/generate-sound-video` | ElevenLabs narrated video |
 | `POST` | `/api/shorts/generate-audio-video` | Video from uploaded audio |
 | `POST` | `/api/lofi/generate-video` | Lofi loop from image + audio |
-| `GET` | `/api/pokemon/{identifier}` | Pokemon data (PokeAPI) |
-| `GET` | `/api/weather?location=` | Current weather (Open-Meteo) |
-| `GET` | `/api/time?timezone=` | Current time (IANA timezone) |
-| `GET` | `/api/wikipedia/search?query=` | Wikipedia extracts + citations |
+| `GET` | `/api/pokemon/{identifier}` | Pokemon data |
+| `GET` | `/api/weather?location=` | Current weather |
+| `GET` | `/api/time?timezone=` | Current time |
+| `GET` | `/api/wikipedia/search?query=` | Wikipedia extracts |
 | `GET` | `/api/pexels/search?query=` | Pexels photos/videos |
 
-## Example: director pipeline
+### Examples
+
+**Full production**
+
+`POST /api/agents/production`
+
+```json
+{
+  "task": "Create a Tokyo travel b-roll short with cinematic energy",
+  "short_format": "silent",
+  "render_video": true
+}
+```
+
+**Director pipeline (legacy)**
 
 `POST /api/agents/director`
 
@@ -286,9 +230,7 @@ background music by default. Say **silent** or **no music** to skip it.
 }
 ```
 
-Returns research, script, and optional rendered video with Pexels background.
-
-## Example: text video
+**Text video**
 
 `POST /api/shorts/generate-text-video`
 
@@ -303,27 +245,35 @@ Returns research, script, and optional rendered video with Pexels background.
 }
 ```
 
-Output is `1080x1920` at 30 FPS. Omit `background_color` for a random palette color.
+Output is `1080x1920` at 30 FPS.
 
-## Notes
+## Project structure
 
-- Generated MP4s live in `api/generated/` and persist until manually removed.
-- Chat history is browser-local only — not synced across devices.
-- Output filenames must end in `.mp4` and cannot contain path separators.
-- Colors use `#RRGGBB` format.
-- External APIs (Gemini, Pexels, ElevenLabs) have their own rate limits and billing.
+```text
+FrameFusion/
+|-- api/
+|   |-- app/
+|   |   |-- agents/          # Production studio agents + Framey
+|   |   |-- models/
+|   |   |-- routers/
+|   |   `-- services/
+|   |-- generated/           # Rendered MP4s (gitignored)
+|   |-- requirements.txt
+|   `-- .env
+|-- web/
+|   |-- src/                 # Framey UI, chat storage, media library
+|   `-- package.json
+|-- scripts/                 # run-api.mjs, setup-api.mjs
+|-- package.json             # npm run dev, setup, …
+`-- README.md
+```
 
-## License
-
-FrameFusion is available under the [MIT License](LICENSE).
-
-## Tags
-
-Use these consistently so issues, PRs, and the GitHub repo stay easy to filter.
+## Contributing
 
 ### GitHub repository topics
 
-`ai` `video-editing` `short-form-video` `generative-ai` `fastapi` `python` `typescript` `vite` `gemini` `elevenlabs` `pexels` `b-roll` `monorepo`
+`ai` `video-editing` `short-form-video` `generative-ai` `fastapi` `python`
+`typescript` `vite` `gemini` `elevenlabs` `pexels` `b-roll` `monorepo`
 
 ### PR and issue labels
 
@@ -331,7 +281,7 @@ Use these consistently so issues, PRs, and the GitHub repo stay easy to filter.
 | --- | --- |
 | `api` | Backend, routers, services, Python deps |
 | `web` | Frontend, chat UI, media library |
-| `agents` | Director, producer, editor, music, research, etc. |
+| `agents` | Director, producer, editor, music, research |
 | `video` | Rendering, MoviePy, FFmpeg, Pexels footage |
 | `audio` | Music, narration, sound design, ElevenLabs |
 | `docs` | README, comments, API docs |
@@ -339,11 +289,7 @@ Use these consistently so issues, PRs, and the GitHub repo stay easy to filter.
 | `bug` | Something broken |
 | `enhancement` | New feature or improvement |
 
-Create matching labels in **Issues → Labels** if they do not exist yet.
-
 ### Commit scopes (optional)
-
-Prefix commits with an area when it helps:
 
 ```text
 api: add music director endpoint
@@ -354,3 +300,18 @@ deps: bump vite in web
 ```
 
 Common scopes: `api`, `web`, `agents`, `video`, `audio`, `docs`, `deps`, `scripts`.
+
+## Notes
+
+- Generated MP4s live in `api/generated/` until manually removed.
+- **Text on screen** — copy is measured against the 9:16 safe area. If it does not
+  fit on one screen, FrameFusion splits it across up to **3 screens** with balanced
+  timing (narrated shorts split audio time by word count per screen).
+- Chat history is browser-local only — not synced across devices.
+- Output filenames must end in `.mp4` with no path separators.
+- Colors use `#RRGGBB` format.
+- External APIs (Gemini, Pexels, ElevenLabs) have their own rate limits and billing.
+
+## License
+
+[MIT License](LICENSE)

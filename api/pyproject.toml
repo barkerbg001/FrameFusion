@@ -1,0 +1,22 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["app", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]
+
+[tool.mypy]
+python_version = "3.10"
+explicit_package_bases = true
+mypy_path = "."
+files = ["app"]
+ignore_missing_imports = true
+warn_unused_ignores = true
+check_untyped_defs = true
