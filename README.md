@@ -316,3 +316,43 @@ Output is `1080x1920` at 30 FPS. Omit `background_color` for a random palette co
 ## License
 
 FrameFusion is available under the [MIT License](LICENSE).
+
+## Tags
+
+Use these consistently so issues, PRs, and the GitHub repo stay easy to filter.
+
+### GitHub repository topics
+
+Add these under **Settings → General → Topics**:
+
+`ai` `video-editing` `short-form-video` `generative-ai` `fastapi` `python` `typescript` `vite` `gemini` `elevenlabs` `pexels` `b-roll` `monorepo`
+
+### PR and issue labels
+
+| Label | Use for |
+| --- | --- |
+| `api` | Backend, routers, services, Python deps |
+| `web` | Frontend, chat UI, media library |
+| `agents` | Director, producer, editor, music, research, etc. |
+| `video` | Rendering, MoviePy, FFmpeg, Pexels footage |
+| `audio` | Music, narration, sound design, ElevenLabs |
+| `docs` | README, comments, API docs |
+| `deps` | Dependabot, npm, pip, root scripts |
+| `bug` | Something broken |
+| `enhancement` | New feature or improvement |
+
+Create matching labels in **Issues → Labels** if they do not exist yet.
+
+### Commit scopes (optional)
+
+Prefix commits with an area when it helps:
+
+```text
+api: add music director endpoint
+web: audio player in chat attachments
+agents: wire editor to cinematography plan
+docs: update setup instructions
+deps: bump vite in web
+```
+
+Common scopes: `api`, `web`, `agents`, `video`, `audio`, `docs`, `deps`, `scripts`.
