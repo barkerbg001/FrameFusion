@@ -21,6 +21,6 @@
     "ci": "npm run build && node scripts/run-api-tool.mjs ruff check tests && node scripts/run-api-tool.mjs ruff format --check tests && npm run test:api"
   },
   "devDependencies": {
-    "concurrently": "^10.0.3"
+    "concurrently": "^10.0.4"
   }
 }
