@@ -1,0 +1,162 @@
+/* Design tokens. Dark is the default; [data-theme="light"] is set by theme.ts
+   (including when the "system" preference resolves to light).
+
+   Roles:
+   - brand (red): primary actions, the logo, the active navigation marker. Solid fills use
+     --brand-solid so white text keeps at least 4.5:1 contrast.
+   - accent (blue): secondary interactions such as links, selection, checked controls and
+     the keyboard focus ring.
+   - framey (red) and reel (blue) mark agent activity.
+   - status colours (ok, warn, danger) are only for status. Destructive actions are
+     outlined and labelled, so they never look like the solid red primary button. */
+
+:root {
+  --font-sans: "Inter var", Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+
+  --fs-2xs: 0.6875rem;
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-base: 0.9375rem;
+  --fs-md: 1.0625rem;
+  --fs-lg: 1.3125rem;
+  --fs-xl: 1.75rem;
+  --fs-2xl: 2.25rem;
+  --lh-tight: 1.2;
+  --lh-base: 1.55;
+
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 999px;
+
+  --sidebar-width: 256px;
+  --activity-width: 360px;
+  --topbar-height: 56px;
+  --content-max: 1160px;
+
+  --icon-sm: 14px;
+  --icon-md: 16px;
+  --icon-lg: 20px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-fast: 120ms;
+  --dur: 200ms;
+
+  /* Dark theme (default) */
+  --bg: #090b10;
+  --bg-sunken: #06070a;
+  --surface: #121620;
+  --surface-2: #1b2230;
+  --surface-3: #242c3d;
+  --border: #222a38;
+  --border-strong: #334055;
+  --text: #f8fafc;
+  --text-muted: #94a3b8;
+  --text-faint: #7c8ba1;
+
+  --brand: #ef4444;
+  --brand-solid: #dc2626;
+  --brand-solid-hover: #b91c1c;
+  --brand-text: #ffffff;
+  --brand-strong: #f87171;
+  --brand-soft: rgb(239 68 68 / 0.14);
+  --brand-line: rgb(239 68 68 / 0.5);
+
+  --accent: #60a5fa;
+  --accent-solid: #2563eb;
+  --accent-hover: #93c5fd;
+  --accent-text: #ffffff;
+  --accent-soft: rgb(59 130 246 / 0.16);
+  --accent-line: rgb(59 130 246 / 0.55);
+
+  --framey: #f87171;
+  --framey-strong: #fca5a5;
+  --framey-soft: rgb(239 68 68 / 0.14);
+  --framey-line: rgb(239 68 68 / 0.5);
+  --reel: #60a5fa;
+  --reel-strong: #93c5fd;
+  --reel-soft: rgb(59 130 246 / 0.16);
+  --reel-line: rgb(59 130 246 / 0.55);
+
+  --ok: #34d399;
+  --ok-soft: rgb(52 211 153 / 0.13);
+  --warn: #fbbf24;
+  --warn-soft: rgb(251 191 36 / 0.12);
+  --danger: #fca5a5;
+  --danger-soft: rgb(248 113 113 / 0.12);
+  --danger-line: rgb(248 113 113 / 0.55);
+
+  --focus: #60a5fa;
+  --focus-ring: 0 0 0 3px rgb(96 165 250 / 0.35);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 8px 24px rgb(0 0 0 / 0.4);
+  --shadow-lg: 0 18px 48px rgb(0 0 0 / 0.55);
+  --scrim: rgb(3 4 7 / 0.66);
+  --art-bg: #090b10;
+}
+
+[data-theme="light"] {
+  --bg: #f5f7fa;
+  --bg-sunken: #eef1f5;
+  --surface: #ffffff;
+  --surface-2: #f1f4f8;
+  --surface-3: #e5e9f0;
+  --border: #dfe4ec;
+  --border-strong: #c3cbd8;
+  --text: #0b0f17;
+  --text-muted: #475569;
+  --text-faint: #5f6d82;
+
+  --brand: #dc2626;
+  --brand-solid: #dc2626;
+  --brand-solid-hover: #b91c1c;
+  --brand-text: #ffffff;
+  --brand-strong: #b91c1c;
+  --brand-soft: rgb(220 38 38 / 0.08);
+  --brand-line: rgb(220 38 38 / 0.45);
+
+  --accent: #1d4ed8;
+  --accent-solid: #2563eb;
+  --accent-hover: #1e40af;
+  --accent-text: #ffffff;
+  --accent-soft: rgb(37 99 235 / 0.09);
+  --accent-line: rgb(37 99 235 / 0.45);
+
+  --framey: #dc2626;
+  --framey-strong: #b91c1c;
+  --framey-soft: rgb(220 38 38 / 0.08);
+  --framey-line: rgb(220 38 38 / 0.45);
+  --reel: #2563eb;
+  --reel-strong: #1d4ed8;
+  --reel-soft: rgb(37 99 235 / 0.09);
+  --reel-line: rgb(37 99 235 / 0.45);
+
+  --ok: #047857;
+  --ok-soft: rgb(4 120 87 / 0.09);
+  --warn: #92400e;
+  --warn-soft: rgb(217 119 6 / 0.12);
+  --danger: #b91c1c;
+  --danger-soft: rgb(220 38 38 / 0.07);
+  --danger-line: rgb(185 28 28 / 0.5);
+
+  --focus: #2563eb;
+  --focus-ring: 0 0 0 3px rgb(37 99 235 / 0.25);
+  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06);
+  --shadow-md: 0 8px 24px rgb(15 23 42 / 0.08);
+  --shadow-lg: 0 18px 48px rgb(15 23 42 / 0.16);
+  --scrim: rgb(15 23 42 / 0.4);
+  --art-bg: #090b10;
+}

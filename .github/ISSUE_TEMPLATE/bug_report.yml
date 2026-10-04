@@ -1,0 +1,59 @@
+name: Bug report
+description: Something in FrameFusion doesn't work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never paste API keys, the contents of `api/.env`, your database, or private project
+        content.** Security problems belong in a private report (see SECURITY.md), not here.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a project
+        2. Click ...
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Setup or installation
+        - Orchestrator chat or production
+        - Scene images
+        - Narration (Edge TTS)
+        - Narration (ElevenLabs)
+        - Rendering
+        - Settings or onboarding
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: provider
+    attributes:
+      label: AI provider and model (if relevant)
+      placeholder: e.g. OpenRouter, openai/gpt-4o-mini
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system, Python version, Node.js version, browser.
+      placeholder: Windows 11, Python 3.12.4, Node 22.14, Firefox 140
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error message or logs
+      description: The message shown in the app or the API terminal. Remove anything private first.
+      render: text

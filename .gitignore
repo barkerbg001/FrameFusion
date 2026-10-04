@@ -1,152 +1,112 @@
-# Byte-compiled / optimized / DLL files
+# FrameFusion ignore rules. This is the only .gitignore in the repository.
+# Paths starting with "/" are anchored to the repo root; others match anywhere.
+
+# --- Secrets and local configuration ---------------------------------------------------
+# Real environment files hold Django/encryption secrets and must never be committed.
+.env
+.env.*
+!.env.example
+*.local
+local_settings.py
+# Exports of browser chats from the pre-Django UI may contain private conversations.
+legacy-chats*.json
+# Private keys, certificates and secret-scanner reports.
+*.pem
+*.key
+*.p12
+*.pfx
+gitleaks-report*.json
+
+# --- Python -----------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
-
-# C extensions
 *.so
-
-# Distribution / packaging
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
 *.egg-info/
-.installed.cfg
 *.egg
-MANIFEST
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
+.eggs/
+/api/build/
+/api/dist/
 pip-log.txt
 pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-.python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow
 __pypackages__/
 
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
+# Virtual environments
+.venv/
 venv/
+env/
 ENV/
-env.bak/
-venv.bak/
 
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
+# Tool caches
 .mypy_cache/
 .dmypy.json
 dmypy.json
-
-# Pyre type checker
+.ruff_cache/
+.pytest_cache/
+.hypothesis/
 .pyre/
+.cache/
 
-# --- FrameFusion monorepo ---
+# Coverage
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+*.py,cover
+/web/coverage/
 
+# --- Django runtime state ---------------------------------------------------------------
+# SQLite database (+ WAL/SHM/journal files and timestamped backups), uploads and
+# collected static files all live under api/var/ by default.
+/api/var/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
+db.sqlite3
+
+# Rendered videos, audio and images, plus the Pexels download cache.
+/api/generated/
+/api/uploads/
+/api/media/
+
+# Temporary frames written by the video pipeline into its working directory.
+/api/*_temp.jpg
+/api/*_temp.jpeg
+/api/*_temp.png
+/api/resized_temp.jpg
+/api/*.mp4
+/api/*.mp3
+/api/*.wav
+/api/*.avi
+
+# --- Frontend ---------------------------------------------------------------------------
 node_modules/
+/web/dist/
+/web/dist-ssr/
+*.tsbuildinfo
+.vite/
 
-# API generated videos (also covered by *.mp4 below)
-api/generated/
+# --- Logs -------------------------------------------------------------------------------
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# Video pipeline temp files (written to api/ cwd)
-*_temp.jpg
-*_temp.jpeg
-*_temp.png
-resized_temp.jpg
-
-# Generated / runtime media
-*.mp3
-*.mp4
-*.avi
-
-# Loose image dumps from legacy video routes — do not block web/public assets
-*.png
-!web/
-!web/**
+# --- Editors and operating systems ------------------------------------------------------
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini

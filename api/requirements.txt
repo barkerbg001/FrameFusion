@@ -1,10 +1,26 @@
-fastapi
-uvicorn
-google-genai
-moviepy
-pillow
-python-dotenv
-opencv-python-headless
-python-multipart
-pytube
+# Web framework
+Django>=6.1,<6.2
+djangorestframework>=3.18,<4
+django-cors-headers>=4.9,<5
+whitenoise>=6.12,<7
+python-dotenv>=1.2
+
+# Credential encryption (Fernet)
+cryptography>=50
+
+# AI providers (all calls run server-side)
+openai>=2.54,<3        # OpenRouter via its OpenAI-compatible API
+google-genai>=2.28,<3
+anthropic>=1.11,<2
+httpx>=0.28
+pydantic>=2.13,<3
+
+# Free narration: client for Microsoft's online Edge read-aloud service (needs internet)
+edge-tts>=7.2,<8
+
+# Media rendering
+moviepy>=2.2,<3
+# moviepy 2.2.1 caps Pillow below 12; see pip-audit-ignore.txt for the accepted advisories.
+pillow>=11.3
+opencv-python-headless>=5
 tzdata

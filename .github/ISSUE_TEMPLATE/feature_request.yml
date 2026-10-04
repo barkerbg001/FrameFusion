@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest an improvement or a new capability.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: |
+        How it could work. New agent abilities are added as orchestrator or specialist tools,
+        not new top-level agents (see docs/architecture.md).
+  - type: textarea
+    id: cost
+    attributes:
+      label: Cost and privacy
+      description: Would this call a paid service, send data to a third party, or need a new key?

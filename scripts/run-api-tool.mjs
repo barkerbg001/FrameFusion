@@ -21,15 +21,19 @@ if (toolArgs.length === 0) {
   process.exit(1)
 }
 
+// Run tools through the venv interpreter so they never pick up a global install.
 const [command, ...args] = toolArgs
-const result = spawnSync(command, args, {
+const pythonArgs = command === 'manage' ? ['manage.py', ...args] : ['-m', command, ...args]
+const result = spawnSync(python, pythonArgs, {
   cwd: apiDir,
   stdio: 'inherit',
-  shell: isWin,
   env: {
     ...process.env,
     PYTHONPATH: apiDir,
   },
 })
 
+if (result.error) {
+  console.error(`Could not run ${python}: ${result.error.message}`)
+}
 process.exit(result.status ?? 1)

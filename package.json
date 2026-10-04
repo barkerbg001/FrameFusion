@@ -3,10 +3,11 @@
   "private": true,
   "version": "0.0.0",
   "license": "MIT",
-  "description": "FrameFusion — AI short-form video monorepo",
+  "description": "FrameFusion: AI short-form video studio (Django API + Vite web app)",
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"npm run dev:api\" \"npm run dev:web\"",
-    "dev:api": "node scripts/run-api.mjs --reload",
+    "dev:api": "node scripts/run-api.mjs",
+    "dev:api:reload": "node scripts/run-api.mjs --reload",
     "dev:web": "npm run dev --prefix web",
     "start:api": "node scripts/run-api.mjs",
     "start:web": "npm run preview --prefix web",
@@ -14,13 +15,17 @@
     "setup": "npm run setup:web && npm run setup:api",
     "setup:web": "npm install --prefix web",
     "setup:api": "node scripts/setup-api.mjs",
+    "migrate": "node scripts/run-api-tool.mjs manage upgrade_single_user && node scripts/run-api-tool.mjs manage migrate",
+    "manage": "node scripts/run-api-tool.mjs manage",
     "test:api": "node scripts/run-api-tool.mjs pytest",
-    "lint:api": "node scripts/run-api-tool.mjs ruff check app tests",
-    "format:api": "node scripts/run-api-tool.mjs ruff format app tests",
+    "lint:api": "node scripts/run-api-tool.mjs ruff check .",
+    "format:api": "node scripts/run-api-tool.mjs ruff format .",
     "typecheck:api": "node scripts/run-api-tool.mjs mypy",
-    "ci": "npm run build && node scripts/run-api-tool.mjs ruff check tests && node scripts/run-api-tool.mjs ruff format --check tests && npm run test:api"
+    "typecheck:web": "npm run typecheck --prefix web",
+    "check:migrations": "node scripts/run-api-tool.mjs manage makemigrations --check --dry-run",
+    "ci": "npm run build && npm run lint:api && node scripts/run-api-tool.mjs ruff format --check . && npm run typecheck:api && npm run check:migrations && npm run test:api"
   },
   "devDependencies": {
-    "concurrently": "^10.0.3"
+    "concurrently": "^10.0.5"
   }
 }

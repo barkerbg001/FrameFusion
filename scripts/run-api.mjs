@@ -15,25 +15,31 @@ const python = fs.existsSync(venvPython)
     ? 'python'
     : 'python3'
 
+const host = process.env.FRAMEFUSION_HOST || '127.0.0.1'
+const port = process.env.FRAMEFUSION_PORT || '8000'
 const reload = process.argv.includes('--reload')
-const uvicornArgs = [
-  '-m',
-  'uvicorn',
-  'app.main:app',
-  '--host',
-  '0.0.0.0',
-  '--port',
-  '8000',
-]
 
-if (reload) {
-  uvicornArgs.push('--reload')
+// FrameFusion has no login, so refuse to listen beyond this machine unless told otherwise.
+const loopback = new Set(['127.0.0.1', 'localhost', '::1', '[::1]'])
+const allowRemote = /^(1|true|yes|on)$/i.test(process.env.FRAMEFUSION_ALLOW_REMOTE || '')
+if (!loopback.has(host) && !allowRemote) {
+  console.error(
+    `Refusing to bind to ${host}: FrameFusion has no login and anyone who can reach it can use ` +
+      'your saved API keys. Use 127.0.0.1, or set FRAMEFUSION_ALLOW_REMOTE=true only behind ' +
+      'your own authentication (see SECURITY.md).',
+  )
+  process.exit(1)
 }
 
-const child = spawn(python, uvicornArgs, {
+// The background job runner lives inside this process, so run a single server process.
+const args = ['manage.py', 'runserver', `${host}:${port}`]
+if (!reload) {
+  args.push('--noreload')
+}
+
+const child = spawn(python, args, {
   cwd: apiDir,
   stdio: 'inherit',
-  shell: isWin,
 })
 
 child.on('exit', (code) => {

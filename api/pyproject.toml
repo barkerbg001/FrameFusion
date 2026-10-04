@@ -1,22 +1,40 @@
 [tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
 testpaths = ["tests"]
-asyncio_mode = "auto"
-filterwarnings = ["ignore::DeprecationWarning"]
+python_files = ["test_*.py"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::pydantic.warnings.PydanticDeprecatedSince20",
+]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py312"
 line-length = 100
-src = ["app", "tests"]
+src = ["."]
+extend-exclude = ["*/migrations/*", "generated", "var"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["B008"]
 
+[tool.ruff.lint.per-file-ignores]
+"engine/**" = ["UP006", "UP035", "UP045", "UP007"]
+
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 explicit_package_bases = true
 mypy_path = "."
-files = ["app"]
+files = ["config", "providers", "studio", "tools", "common", "engine/llm.py", "engine/runtime.py", "engine/paths.py", "engine/integrations.py", "engine/orchestrator", "engine/services/images", "engine/services/timeline.py"]
+exclude = ["migrations/"]
 ignore_missing_imports = true
-warn_unused_ignores = true
+warn_unused_ignores = false
 check_untyped_defs = true
+
+# Agent and media modules predate strict typing; they are imported but not checked.
+[[tool.mypy.overrides]]
+module = ["engine.agents.*", "engine.services.*", "engine.schemas.*"]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = ["engine.services.images.*", "engine.services.timeline"]
+ignore_errors = false

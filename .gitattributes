@@ -1,0 +1,9 @@
+# Store text with LF in the repository; check out with the platform's line endings.
+* text=auto
+
+*.webp binary
+*.png binary
+*.jpg binary
+*.ico binary
+*.mp3 binary
+*.mp4 binary

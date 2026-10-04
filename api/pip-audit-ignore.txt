@@ -1,0 +1,27 @@
+# Advisories that `pip-audit` (CI "Dependency audit" job) is told to ignore.
+# One advisory ID per line; text after "#" is the reason. Remove entries as soon as a fix
+# can be installed.
+#
+# Pillow: moviepy 2.2.1 (latest) requires pillow<12, so the fixed releases (12.1.1-12.3.0)
+# cannot be installed yet. Exposure is limited because FrameFusion only lets Pillow decode
+# JPEG, PNG and WebP (magic bytes checked first, and `Image.open(..., formats=...)`), never
+# calls Image.show(), and only renders text with system fonts and internal coordinates.
+# Revisit when moviepy allows Pillow 12.
+PYSEC-2026-165   # font glyph advance overflow: system fonts only
+PYSEC-2026-2249  # PSD decoder: PSD is never decoded
+PYSEC-2026-2250  # FITS decoder: never decoded
+PYSEC-2026-2251  # nested coordinate lists: coordinates are internal
+PYSEC-2026-2252  # PSD decoder: never decoded
+PYSEC-2026-2253  # PCF font files: not loaded
+PYSEC-2026-2254  # FontFile.compile: not used
+PYSEC-2026-2255  # BDF font files: not loaded
+PYSEC-2026-2256  # GD decoder: never decoded
+PYSEC-2026-2257  # WindowsViewer (Image.show): not used
+PYSEC-2026-2874  # PDF parser: never decoded
+PYSEC-2026-3451  # coordinate overflow: coordinates are internal
+PYSEC-2026-3453  # ImageCms transform: not used
+PYSEC-2026-3454  # rank filter: not used
+PYSEC-2026-3493  # raw-codec tiles: only JPEG/PNG/WebP are opened
+PYSEC-2026-3494  # TGA encoder: never written
+PYSEC-2026-3495  # PDF stream decode: never decoded
+PYSEC-2026-3496  # JPEG 2000 decoder: never decoded

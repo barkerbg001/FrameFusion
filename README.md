@@ -1,61 +1,113 @@
-# FrameFusion
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="web/public/brand/wordmark-light.svg" />
+    <img src="web/public/brand/wordmark-dark.svg" alt="FrameFusion" width="280" height="64" />
+  </picture>
+</h1>
 
-AI-assisted short-form video creation. **Framey** (chat UI in `web/`) talks to a
-**FastAPI** backend (`api/`) that runs specialist agents, Pexels b-roll tools, music
-generation, and MP4 rendering.
+AI-assisted short-form video creation that runs on your own computer. One **orchestrator** works
+with you: it talks ideas through, writes the brief, hands each production stage to a specialist
+(research, script, scene images, narration, render), checks every result and delivers a 9:16 MP4.
+
+The orchestrator has two interchangeable **personalities**, picked in Settings and overridable
+per project:
+
+- **Director** – decisive, structured, concise.
+- **Creative Partner** – imaginative and conversational.
+
+Both are the same orchestrator with identical specialists, tools, models and permissions; only
+the voice changes. See [docs/architecture.md](docs/architecture.md).
+
+The web app (`web/`, vanilla TypeScript + Vite) talks to a Django + Django REST Framework API
+(`api/`) backed by SQLite. Every AI and media call runs on the server with keys you save in the
+app; keys are encrypted at rest and never sent back to the browser. Long-running work (chat
+replies, full productions, renders) runs as background jobs that the UI polls.
+
+> **FrameFusion has no login.** Anyone who can reach the API can use your saved keys and spend
+> your credits. It only listens on `127.0.0.1` and only accepts localhost origins by default.
+> Do not expose it to a network or the internet. See [SECURITY.md](SECURITY.md).
 
 ## Quick start
 
-**Prerequisites:** Python 3.10+, Node.js 20+, FFmpeg, npm
+**Prerequisites:** Python 3.12+, Node.js 20+ (22 recommended), npm, and git. MoviePy downloads
+its own FFmpeg build on first render; a system FFmpeg is optional. The commands work in
+PowerShell, cmd, bash and zsh.
+
+**Platforms:** developed and tested on Windows; CI runs on Linux (Ubuntu). macOS is expected to
+work but is not regularly tested.
+
+**What you need:** an API key for one AI provider (OpenRouter, Google Gemini or Anthropic Claude)
+to use the orchestrator. Narration works without a key (Edge TTS, an online Microsoft service).
+ElevenLabs and Pexels are optional. The test suite and CI need no keys at all.
 
 ```powershell
-git clone https://github.com/your-org/FrameFusion.git
+git clone https://github.com/barkerbg001/FrameFusion.git
 cd FrameFusion
 npm install
-npm run setup
+npm run setup     # web deps, api/.venv, pip install, api/.env with generated secrets, migrate
+npm run dev       # API on http://127.0.0.1:8000 + web on http://localhost:5173
 ```
 
-Create `api/.env` (see [Configuration](#configuration)), then:
+Open http://localhost:5173. The first visit starts the setup guide:
 
-```powershell
-npm run dev
-```
+1. **Welcome** – what the orchestrator does, what you need, and which personality it uses.
+2. **AI provider** – save a key for at least one of OpenRouter, Google Gemini or Anthropic
+   Claude, and test it.
+3. **Models** – choose a default provider and model, and optionally a separate model for the
+   visual specialist. Both model routes must be ready to continue.
+4. **Narration** (optional) – free Edge TTS (default, no key) or ElevenLabs; pick a voice and
+   delivery, and preview it.
+5. **Stock media** (optional) – Pexels key and search defaults.
+6. **Appearance** (optional) – system, dark or light theme.
+7. **Review** – check what is set up, then create your first project or go to the workspace.
 
-| URL | Purpose |
-| --- | --- |
-| http://127.0.0.1:5173 | Web app (Framey chat) |
-| http://127.0.0.1:8000/docs | API (Swagger) |
+Progress is saved in SQLite after every step, so closing the tab resumes where you left off.
+Optional steps can be skipped; the review lists what each missing integration is needed for.
+Nothing is generated and no credits are spent unless you click a button that says so. Reopen the
+guide any time from **Settings → Setup guide**.
+
+`npm run setup` creates `api/.env` from `api/.env.example` and fills in `DJANGO_SECRET_KEY` and
+`FRAMEFUSION_ENCRYPTION_KEY`. If `api/.env` already exists it only appends missing settings; it
+never rewrites existing lines or prints secrets.
+
+### Commands
 
 | Command | What it does |
 | --- | --- |
 | `npm run dev` | API + web together |
-| `npm run dev:api` | API only (with reload) |
-| `npm run dev:web` | Web only |
-| `npm run start:api` | API without reload |
-| `npm run build` | Production web build |
-| `npm run setup` | Web deps + `api/.venv` + pip install (incl. dev tools) |
-| `npm run test:api` | Run API pytest suite |
-| `npm run lint:api` | Ruff lint on `api/app` and `api/tests` |
-| `npm run format:api` | Ruff format on `api/app` and `api/tests` |
-| `npm run typecheck:api` | Mypy on `api/app` |
+| `npm run dev:api` | API only (`manage.py runserver --noreload`) |
+| `npm run dev:api:reload` | API with auto-reload (reloads interrupt running jobs) |
+| `npm run dev:web` | Web only (Vite, proxies `/api` to the API) |
+| `npm run build` | Typecheck and build the web app into `web/dist` |
+| `npm run migrate` | Upgrade an old multi-account database if needed, then apply migrations |
+| `npm run manage -- <command>` | Any `manage.py` command |
+| `npm run test:api` | API test suite (pytest, providers mocked, no network) |
+| `npm run lint:api` / `npm run format:api` | Ruff lint / format |
+| `npm run typecheck:api` / `npm run typecheck:web` | mypy / tsc |
+| `npm run check:migrations` | Fail if models changed without a migration |
+| `npm run ci` | Build, lint, format check, mypy, migration check and tests |
 
-The API runner uses `api/.venv` when present, otherwise system `python`.
+`FRAMEFUSION_HOST` and `FRAMEFUSION_PORT` change where `dev:api` listens (default
+`127.0.0.1:8000`), and the Vite dev proxy follows the same variables. If you also move the web
+port, add its origin to `FRAMEFUSION_FRONTEND_ORIGINS`. The script refuses a non-loopback host unless `FRAMEFUSION_ALLOW_REMOTE` is
+set; read [SECURITY.md](SECURITY.md) first.
 
 <details>
-<summary>Manual setup (without root scripts)</summary>
+<summary>Manual setup (without the root scripts)</summary>
 
-**API** — from `api/`:
+From `api/`:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements-dev.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+Copy-Item .env.example .env   # then fill in DJANGO_SECRET_KEY and FRAMEFUSION_ENCRYPTION_KEY
+python manage.py upgrade_single_user
+python manage.py migrate
+python manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-Production / minimal runtime only: `pip install -r requirements.txt`
-
-**Web** — from `web/`:
+From `web/`:
 
 ```powershell
 npm install
@@ -64,254 +116,312 @@ npm run dev
 
 </details>
 
-## Configuration
+## Integrations
 
-Create `api/.env`:
+All keys are saved in the app (setup guide or **Settings**), encrypted with
+`FRAMEFUSION_ENCRYPTION_KEY`, and only ever shown masked (`••••abcd`). Each card can show/hide
+the key while typing, save, replace, test and remove it, and links to the provider's key page.
+Keys are redacted from logs, job events and error responses.
 
-```dotenv
-GEMINI_API_KEY=your_gemini_key
-PEXELS_API_KEY=your_pexels_key
-ELEVENLABS_API_KEY=your_elevenlabs_key
+| Service | Used for | Connection test | Required |
+| --- | --- | --- | --- |
+| OpenRouter | Orchestrator and specialists (many model families) | `GET /api/v1/key`, not billed | One AI provider |
+| Google Gemini | Orchestrator and specialists | Lists models, not billed | One AI provider |
+| Anthropic Claude | Orchestrator and specialists | Lists models, not billed | One AI provider |
+| Edge TTS (no key) | Free narration for previews, narrated shorts and full productions | Loading the voice list | Default narration provider; needs internet |
+| ElevenLabs | Premium narration (if selected), standalone AI music | Lists voices and reads the subscription, no credits | Optional |
+| Pexels | Stock photo/video search, scene images | One curated-photos request, counts toward the hourly quota | Optional |
+| Openverse (no key) | Creative Commons scene images with licence metadata | – | Used automatically; anonymous rate limits apply |
 
-# Optional
-ELEVENLABS_VOICE_ID=your_voice_id
-ELEVENLABS_MUSIC_MODEL=music_v2
-MUSIC_PROVIDER=elevenlabs
-GEMINI_MODEL=gemini-2.5-flash
+**Models.** Choose a default provider and model, optionally override it for one of two model
+routes (*Orchestrator and writing*, or *Visual specialist*), and set temperature or a
+response-length limit (shown only when every selected provider supports them). Routes are not
+personalities: both personalities use the same routes. FrameFusion never switches providers on
+its own: if the selected provider fails, the job fails with a clear message and a link to
+Settings.
+
+**Scene images.** The visual specialist searches Pexels (if configured) and Openverse, inspects
+candidates, downloads one image per scene and records provider, creator, licence, licence URL,
+attribution, source page, dimensions and a SHA-256 checksum. Identical files are stored once.
+Automatic selection only uses images with a documented licence; images from a URL or webpage
+you supply are marked "rights unknown". Downloads go through an SSRF-safe fetcher (public
+addresses and ports 80/443 only, every redirect re-checked, size and type limits, bounded
+retries). In a project's **Scenes** tab you can see each scene's image, source and attribution,
+search for a replacement (Pexels, Openverse, an image URL or images on a webpage), remove it,
+and re-render. Licences come from the source; check them before publishing.
+
+**Pexels** (**Settings → Stock media**): default media type, orientation and minimum size for
+stock search and scene images. Results keep the photographer's name and link.
+
+When a feature needs a missing integration, the workspace says which one and links to Settings
+instead of failing silently.
+
+### Narration
+
+Narration is set in **Settings → Narration** (also a setup-guide step). It applies to voice
+previews, narrated shorts and the voice stage of full productions. Each project can override the
+default from the **Narration** tab of its side panel.
+
+| Provider | Cost | Key | Where the text goes |
+| --- | --- | --- | --- |
+| **Free – Edge TTS** (default) | Free | None | Microsoft's online speech service |
+| **ElevenLabs** | Your ElevenLabs credits | ElevenLabs key saved in Settings | ElevenLabs |
+
+**Edge TTS** uses the [`edge-tts`](https://github.com/rany2/edge-tts) Python package, a client for
+the online text-to-speech service behind Microsoft Edge's read-aloud feature. It is **not offline
+or local synthesis**: the server sends the narration text to Microsoft over the internet and
+receives MP3 audio with word timings. It needs no API key. You can search the voice list by
+name, language, gender or style, preview any voice, and adjust rate (−50 % to +100 %), pitch
+(±50 Hz) and volume (±50 %). The default voice is `en-US-EmmaMultilingualNeural`.
+
+It is installed with the other API dependencies (`npm run setup` does this for you):
+
+```powershell
+cd api
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt   # includes edge-tts>=7.2,<8
+# or just the narration client:
+.\.venv\Scripts\python.exe -m pip install "edge-tts>=7.2,<8"
 ```
 
-| Key | Required for |
+On macOS or Linux use `.venv/bin/python -m pip install -r requirements.txt`.
+
+**ElevenLabs** narration uses the voice, speech model and voice settings saved under the ElevenLabs
+part of Settings → Narration, and spends your credits. Previews with ElevenLabs also use credits
+(limited to 300 characters) and only run when you click **Preview narration**.
+
+**No silent switching.** FrameFusion never falls back from one narration provider to the other.
+If narration fails, the job stops with a "Narration could not be recorded" message that names the
+provider and links to Settings → Narration. **Retry narration** re-records only the voice track
+and reuses the planned script, visuals and music, so the rest of the production is not paid for
+again. You can also retry with the other provider explicitly. ElevenLabs is offered only when a
+key is saved.
+
+**Limitations of Edge TTS.** The service is unofficial and undocumented. Microsoft can change,
+rate-limit or withdraw it at any time, and FrameFusion makes no promise about its availability,
+usage limits or the rights to use its audio commercially. Check Microsoft's terms for your use.
+Some voices are retired over time; a saved voice that is no longer offered is reported clearly.
+FrameFusion keeps at most two syntheses running at once, retries network errors up to three
+times, and caches the voice list in memory for 12 hours.
+
+#### Troubleshooting narration
+
+| Symptom | What to do |
 | --- | --- |
-| `GEMINI_API_KEY` | Framey chat and all Gemini agents |
-| `PEXELS_API_KEY` | Pexels search, b-roll download, backgrounds |
-| `ELEVENLABS_API_KEY` | Narrated shorts, voiceover, and AI music (free procedural fallback without it) |
-| `MUSIC_PROVIDER` | Optional: `elevenlabs` or `procedural` |
+| "Couldn't reach the Edge TTS service" | Check the internet connection and any proxy or firewall that blocks `speech.platform.bing.com` (WebSocket over HTTPS), then click **Retry narration**. |
+| "Edge TTS returned no audio for the voice …" | The voice may be retired or briefly unavailable. Pick another voice in Settings → Narration, or retry later. |
+| "… is no longer offered" | Refresh the voice list in Settings → Narration and choose a current voice. Check project overrides too. |
+| Voice list empty or stale | Use the refresh button next to the voice filters (bypasses the 12-hour cache). |
+| `ModuleNotFoundError: edge_tts` | Install the dependencies again with the pip command above, then restart the API. |
+| Clock-skew errors | Make sure the system clock is set automatically; the service rejects requests from a badly skewed clock. |
+| ElevenLabs "not configured" | Save an ElevenLabs key in Settings → Narration, or switch the provider back to Edge TTS. |
 
-The `.env` file is gitignored. Do not commit secrets.
+**Keys from an older `api/.env`.** If `api/.env` still contains `OPENROUTER_API_KEY`,
+`GEMINI_API_KEY`, `ANTHROPIC_API_KEY`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID` or
+`PEXELS_API_KEY`, import them once and then delete those lines:
 
-## Using Framey
+```powershell
+npm run manage -- import_env_keys            # add --replace to overwrite saved keys
+```
 
-Open http://127.0.0.1:5173 and chat with **Framey** to research topics, create
-text or narrated shorts, or build Pexels b-roll montages. Videos appear inline and
-in the **Media** sidebar.
+## Configuration
 
-**Example prompts**
+Server settings live in `api/.env` (git-ignored). `api/.env.example` documents every variable;
+the important ones:
 
-- *Research Pikachu with verified facts for a short video*
-- *Create a narrated short about Claude AI skills*
-- *Generate a Tokyo b-roll video*
+| Variable | Purpose |
+| --- | --- |
+| `DJANGO_SECRET_KEY` | **Required.** Signs CSRF tokens. |
+| `FRAMEFUSION_ENCRYPTION_KEY` | **Required to save keys.** Fernet key that encrypts saved keys. Comma-separate keys to rotate (newest first). Without it the app shows a banner and refuses to store keys. |
+| `DJANGO_DEBUG` | `true` for local development only. |
+| `DJANGO_ALLOWED_HOSTS` | Host names the API answers to (localhost only unless remote access is allowed). |
+| `FRAMEFUSION_FRONTEND_ORIGINS` | Browser origins allowed to call the API (CORS + CSRF). |
+| `FRAMEFUSION_HOST` / `FRAMEFUSION_PORT` | Address `npm run dev:api` binds to. |
+| `FRAMEFUSION_ALLOW_REMOTE` | Opt-in for non-localhost hosts or origins. Only for setups protected by your own authentication; see SECURITY.md. |
+| `DJANGO_SECURE_COOKIES` | Secure cookies; defaults to the opposite of `DJANGO_DEBUG`. |
+| `FRAMEFUSION_DB_PATH` | SQLite file (default `api/var/framefusion.sqlite3`). |
+| `FRAMEFUSION_UPLOAD_DIR` / `FRAMEFUSION_OUTPUT_DIR` | Uploaded inputs / rendered media. |
+| `FRAMEFUSION_MAX_UPLOAD_MB` | Upload size limit. |
+| `FRAMEFUSION_JOB_WORKERS` | Background job threads. |
+| `FRAMEFUSION_LLM_TIMEOUT_SECONDS` / `FRAMEFUSION_LLM_MAX_RETRIES` | Per-call timeout and bounded retries for transient provider errors. |
+| `FRAMEFUSION_*_FALLBACK_MODELS` | Model ids offered when live model discovery fails. |
 
-**Chat history** — stored in browser `localStorage` (`framefusion:chats`). Use the
-**⋮** menu on any chat to rename or delete it.
+API keys are not configured through environment variables.
 
-**Media library** — sidebar **Media** tab lists every MP4 from chat attachments and
-`api/generated/`.
+## Data, backups and upgrades
 
-**B-roll + music** — silent b-roll montages get background music automatically.
-Say *silent* or *no music* to skip it.
+SQLite runs in WAL mode with short transactions. It stores projects, messages, generation jobs
+and their events, media records, app settings (theme, setup progress, AI and media preferences)
+and encrypted keys. The database, uploads, rendered media, `.env` and other runtime artifacts are
+git-ignored by the root `.gitignore`.
+
+**Backups.** Stop the API, then copy `api/var/framefusion.sqlite3` (plus any `-wal`/`-shm` files
+beside it), or take a live backup with
+`sqlite3 api/var/framefusion.sqlite3 ".backup 'framefusion-backup.sqlite3'"`. Back up
+`api/generated/` for rendered media and store `FRAMEFUSION_ENCRYPTION_KEY` separately (for
+example in a password manager). Without that key, saved keys cannot be decrypted and must be
+re-entered.
+
+### Upgrading from the multi-account version
+
+Earlier builds had sign-up and per-user data. To upgrade, stop the API and run:
+
+```powershell
+npm run migrate        # npm run setup does the same
+```
+
+`upgrade_single_user` detects the old schema and then:
+
+1. moves the old database aside as `framefusion.accounts-backup-<timestamp>.sqlite3` (kept until
+   you delete it);
+2. creates a fresh single-user database;
+3. imports every account's projects, messages, jobs, job events and media. Project IDs are
+   kept. If two accounts used the same legacy chat ID, the second is prefixed with the username.
+4. applies settings that all accounts agree on (identical keys, AI defaults, overrides,
+   theme).
+
+Settings that differ between accounts, such as two different OpenRouter keys or different
+default models, are **not applied or merged**. Each one becomes a pending choice. Resolve them
+in **Settings → Data → Imported settings**, where keys are shown masked, or from the command line:
+
+```powershell
+npm run manage -- resolve_import_conflicts --list
+npm run manage -- resolve_import_conflicts --choose credential:openrouter=u2 --choose theme=keep_current
+npm run manage -- resolve_import_conflicts --prefer alice   # take one account's value everywhere
+```
+
+Account tables exist only in the backup file. The new database has no account models. To
+import a backup again later, use `npm run manage -- import_account_data --from <file>`. It is
+idempotent and skips records that already exist.
+
+### Browser-only chats
+
+The first version kept chats in browser `localStorage` and wrote MP4s to `api/generated/`.
+Imports are additive and repeatable; already-imported records are skipped.
+
+- In the browser that has the old chats: **Settings → Data → Preview import / Import**.
+- From another machine: run `copy(localStorage.getItem("framefusion:chats"))` in the old
+  browser's console, save it as `chats.json`, then:
+
+```powershell
+npm run manage -- import_legacy_chats --file chats.json --dry-run
+npm run manage -- import_legacy_chats --file chats.json
+npm run manage -- import_legacy_media --dry-run
+npm run manage -- import_legacy_media
+```
 
 ## Architecture
 
-FrameFusion uses a **production studio** model: specialist agents plan and render
-each part of a short. Framey (chat) uses a fast tool path; `POST /api/agents/production`
-runs the full crew.
+```text
+api/
+  config/      Django settings, URLs, WSGI/ASGI
+  common/      Request protections (localhost guard, CSRF), HTTP helpers, error normalisation
+  providers/   App settings, encrypted keys, AI/media preferences, onboarding state,
+               connection tests, model discovery, account-era import;
+               clients/ has the OpenRouter, Gemini and Anthropic clients behind one interface
+  studio/      Projects, messages, background jobs + events, production tasks, media,
+               image search/download endpoints, agent endpoints, legacy import commands
+  tools/       Pexels/Wikipedia/weather/time/Pokemon lookups and render tools (as jobs)
+  engine/      orchestrator/ (personalities, chat, specialists, persisted production run,
+               registry), services/images/ (safe fetch, Pexels/Openverse/URL/webpage sources,
+               image toolkit), timeline renderer, QC, narration (Edge TTS or ElevenLabs);
+               reads keys and defaults through engine/integrations.py
+  tests/       pytest suite with mocked providers
+web/
+  src/api.ts         Typed API client (cookies + CSRF; no keys in the browser)
+  src/views/         Onboarding, Studio, project workspace, Media, Agents, Settings;
+                     integrations.ts holds the key cards and settings panels both reuse
+  src/styles/        tokens.css (themes; red brand, blue secondary, red/blue personality
+                     tones, status colours) and app.css
+  src/assets/        agents/ (Creative Partner and Director avatars), illustrations/
+                     (onboarding and empty states); icons come from lucide
+  public/            favicon.svg (logo mark), app icons, web manifest, brand/ wordmarks
+scripts/       setup-api.mjs, run-api.mjs, run-api-tool.mjs
+```
 
-### Agents
+**Request protection.** There are no accounts. Instead, `ALLOWED_HOSTS` is limited to localhost,
+which also blocks DNS rebinding. A middleware rejects API requests that browsers mark as
+cross-site or that come from unlisted origins. DRF enforces the CSRF token on every unsafe
+request. Starting with a non-local host or origin fails unless `FRAMEFUSION_ALLOW_REMOTE` is
+set.
 
-| Agent | Role |
+**Provider layer.** `providers/clients` normalises messages, system instructions, tool calls,
+structured output, usage and errors (`invalid_credentials`, `rate_limited`, `not_configured`,
+`provider_error`, ...) across the three AI providers. Calls have timeouts, and only transient
+failures are retried, a bounded number of times. Agents resolve their provider and model as
+`agent → route → provider/model/key`.
+
+**Jobs.** `POST` endpoints that call a model or render media return `202` with a job. Jobs run
+on an in-process thread pool, record progress as events, and can be cancelled or retried.
+`GET /api/jobs/<id>?after=<seq>` returns the job plus new events. Jobs that were running when
+the server stopped are marked interrupted, and can be retried.
+
+**Hierarchy.**
+
+```text
+You → Orchestrator (Director or Creative Partner)
+        → specialists: research, script, visual, ideas, music
+        → services: narration, music bed, timeline renderer, quality check
+        → artifacts (brief, script, scene images, narration, video) → final MP4
+```
+
+Specialists report only to the orchestrator and never delegate to each other. A full
+production runs these stages as persisted tasks: brief → research → script → visuals →
+narration → music → render → QC. Each task is *proposed*, *active*, *completed*, *verified*,
+*failed*, *cancelled*, *skipped* or *invalidated*. Unchanged verified stages are reused,
+changing a stage invalidates everything downstream, and a failed or cancelled run resumes from
+where it stopped. Details in [docs/architecture.md](docs/architecture.md).
+
+## API overview
+
+All endpoints are under `/api`. `GET /api/app` sets the CSRF cookie; unsafe methods need the
+`X-CSRFToken` header.
+
+| Area | Endpoints |
 | --- | --- |
-| 🎬 Director | Creative vision, assigns specialists, final approval |
-| 📋 Producer | Workflow, deadlines, asset tracking |
-| 🔍 Research | Facts, references, source material |
-| ✍️ Script | Hooks, storytelling, script writing |
-| 📷 Cinematography | Shot lists, camera movement, composition |
-| 🎨 Visual | B-roll direction, visual style, asset plan |
-| 🎤 Voice | Narration plan, voice selection, delivery |
-| 🎼 Music Director | Mood per scene, music prompts, transitions |
-| 🔊 Sound Design | SFX, ambient layers, mix notes |
-| ✂️ Editor | Assembly, timing, cuts, render |
-| 🎞️ Render | Fast script-to-MP4 (`produce-short`) |
+| App | `GET app` (theme, personality, setup progress, readiness, integrations, pending import choices), `PUT settings/appearance`, `PUT settings/personality`, `GET/PUT settings/onboarding` |
+| Keys and AI | `GET settings/providers`, `PUT/DELETE settings/providers/<service>/key`, `POST settings/providers/<service>/test`, `GET settings/providers/<p>/models`, `GET/PUT settings/ai` |
+| Media settings | `GET/PUT settings/media`, `GET settings/media/elevenlabs/voices`, `GET settings/media/elevenlabs/models` |
+| Narration | `GET/PUT settings/narration`, `GET settings/narration/edge/voices?refresh=1`, `POST narration/preview` (job; ElevenLabs uses credits), `GET narration/previews/<job>` |
+| Import choices | `GET settings/import-conflicts`, `POST settings/import-conflicts/<id>` |
+| Projects | `GET/POST projects`, `GET/PATCH/DELETE projects/<id>` (PATCH accepts `title` and `personality`), `POST projects/<id>/messages` (job), `POST projects/<id>/production` (job), `POST projects/<id>/production/rerun` (job, optional `from_stage`), `POST projects/import-legacy` |
+| Scene images | `POST projects/<id>/images/search`, `POST projects/<id>/images/download` (by `candidate_id`, optional `scene_index`), `PUT projects/<id>/scenes/<n>/image` (`asset_id` or `null`) |
+| Jobs | `GET jobs`, `GET jobs/<id>?after=`, `POST jobs/<id>/cancel`, `POST jobs/<id>/retry`, `POST jobs/<id>/retry-narration` (optional `provider`) |
+| Agents | `GET agents/registry`, `GET agents/status`, `POST agents/<slug>` (job) |
+| Media | `GET media`, `DELETE media/<id>`, `GET media/<id>/file` (supports `Range`) |
+| Tools | `GET pexels/search`, `GET pexels/photos/search`, `GET pexels/videos/search`, `GET wikipedia/search`, `GET weather`, `GET time`, `GET pokemon/<id>` |
+| Render tools (jobs) | `POST shorts/generate-text-video`, `POST shorts/generate-sound-video`, `POST shorts/generate-audio-video`, `POST lofi/generate-video`, `POST video-producer/text-short`, `POST video-producer/sound-short` |
+| Legacy | `GET chat/health`, `GET chat/videos`, `GET chat/videos/<file>`, `GET chat/audio/<file>` |
 
-### Pipelines
+`<service>` is one of `openrouter`, `gemini`, `anthropic`, `elevenlabs`, `pexels`.
 
-**Full production** — `POST /api/agents/production`
+## Known limitations
 
-```text
-Director → Producer → Research → Script → Cinematography → Visual
-  → Voice → Music Director → Sound Design → Editor → MP4
-```
-
-The Editor uses cinematography (shot timing), visual (Pexels + palette), voice
-(narrated vs silent), and music director (score + mux).
-
-**Framey chat** — tools and fallbacks for quick tasks
-
-```text
-Research → text/sound short | Pexels download → stitch → music → mux
-```
-
-**Legacy** — `POST /api/agents/director`
-
-```text
-Research → Script → Editor → MP4
-```
-
-## API reference
-
-### Chat & media
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `GET` | `/api/chat/health` | Health check |
-| `POST` | `/api/chat` | Talk to Framey |
-| `GET` | `/api/chat/videos` | List generated MP4s |
-| `GET` | `/api/chat/videos/{filename}` | Stream/download a video |
-| `GET` | `/api/chat/audio/{filename}` | Stream/download music |
-
-### Agents
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `GET` | `/api/agents/registry` | List production studio agents |
-| `POST` | `/api/agents/production` | Full studio pipeline |
-| `POST` | `/api/agents/director-brief` | Director vision + assignments |
-| `POST` | `/api/agents/workflow` | Producer workflow plan |
-| `POST` | `/api/agents/cinematography` | Shot list and composition |
-| `POST` | `/api/agents/visual` | Visual style and asset plan |
-| `POST` | `/api/agents/voice` | Narration and delivery plan |
-| `POST` | `/api/agents/music-director` | Scene music cues |
-| `POST` | `/api/agents/sound-design` | SFX and mix suggestions |
-| `POST` | `/api/agents/director` | Legacy research → script → edit |
-| `POST` | `/api/agents/research` | Research report |
-| `POST` | `/api/agents/screenwrite` | Short-form script |
-| `POST` | `/api/agents/edit-video` | Edit and render a video |
-| `POST` | `/api/agents/compose-music` | Generate background music |
-| `POST` | `/api/agents/produce-short` | Render from script |
-| `POST` | `/api/agents/ideas` | Brainstorm video ideas |
-
-### Video & data tools
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `POST` | `/api/shorts/generate-text-video` | Silent 9:16 text video |
-| `POST` | `/api/shorts/generate-sound-video` | ElevenLabs narrated video |
-| `POST` | `/api/shorts/generate-audio-video` | Video from uploaded audio |
-| `POST` | `/api/lofi/generate-video` | Lofi loop from image + audio |
-| `GET` | `/api/pokemon/{identifier}` | Pokemon data |
-| `GET` | `/api/weather?location=` | Current weather |
-| `GET` | `/api/time?timezone=` | Current time |
-| `GET` | `/api/wikipedia/search?query=` | Wikipedia extracts |
-| `GET` | `/api/pexels/search?query=` | Pexels photos/videos |
-
-### Examples
-
-**Full production**
-
-`POST /api/agents/production`
-
-```json
-{
-  "task": "Create a Tokyo travel b-roll short with cinematic energy",
-  "short_format": "silent",
-  "render_video": true
-}
-```
-
-**Director pipeline (legacy)**
-
-`POST /api/agents/director`
-
-```json
-{
-  "task": "Create a weather briefing short about Johannesburg this week",
-  "context": "Upbeat tone for commuters",
-  "produce_short": true,
-  "short_format": "auto"
-}
-```
-
-**Text video**
-
-`POST /api/shorts/generate-text-video`
-
-```json
-{
-  "text": "Sometimes the smallest step changes everything.",
-  "duration_seconds": 10,
-  "background_color": "#264653",
-  "text_color": "#FFFFFF",
-  "font_size": 96,
-  "output_name": "quote.mp4"
-}
-```
-
-Output is `1080x1920` at 30 FPS.
-
-## Project structure
-
-```text
-FrameFusion/
-|-- api/
-|   |-- app/
-|   |   |-- agents/          # Production studio agents + Framey
-|   |   |-- models/
-|   |   |-- routers/
-|   |   `-- services/
-|   |-- generated/           # Rendered MP4s (gitignored)
-|   |-- requirements.txt
-|   `-- .env
-|-- web/
-|   |-- src/                 # Framey UI, chat storage, media library
-|   `-- package.json
-|-- scripts/                 # run-api.mjs, setup-api.mjs
-|-- package.json             # npm run dev, setup, …
-`-- README.md
-```
+- Single user, no login: suitable for your own machine only (see SECURITY.md).
+- The job runner is in-process: run a single API process. Auto-reload or a restart interrupts
+  running jobs (they are marked interrupted and can be retried).
+- Progress is reported per step through job events; tokens are not streamed to the browser.
+- Which generation parameters a Gemini model accepts is only confirmed when it is called.
+- ElevenLabs keys restricted to text-to-speech cannot list models; common models are offered
+  instead.
+- Free narration needs an internet connection and depends on Microsoft's unofficial Edge
+  read-aloud service, which can change or stop working without notice (see Narration).
+- The old YouTube and lofi file-path endpoints were removed; `lofi/generate-video` takes uploads.
+- Openverse and Pexels have rate limits; when they are hit, scenes are reported as gaps rather
+  than filled with something else. Licence metadata comes from the source and is not verified.
+- When the visual specialist's model doesn't assign an image, a deterministic fallback takes the
+  top documented-licence search result, which may be a weak match. Replace it in the Scenes tab.
+- The production music bed is procedural. ElevenLabs music is only used when you ask the music
+  specialist for a standalone track.
 
 ## Contributing
 
-### GitHub repository topics
-
-`ai` `video-editing` `short-form-video` `generative-ai` `fastapi` `python`
-`typescript` `vite` `gemini` `elevenlabs` `pexels` `b-roll` `monorepo`
-
-### PR and issue labels
-
-| Label | Use for |
-| --- | --- |
-| `api` | Backend, routers, services, Python deps |
-| `web` | Frontend, chat UI, media library |
-| `agents` | Director, producer, editor, music, research |
-| `video` | Rendering, MoviePy, FFmpeg, Pexels footage |
-| `audio` | Music, narration, sound design, ElevenLabs |
-| `docs` | README, comments, API docs |
-| `deps` | Dependabot, npm, pip, root scripts |
-| `bug` | Something broken |
-| `enhancement` | New feature or improvement |
-
-### Commit scopes (optional)
-
-```text
-api: add music director endpoint
-web: audio player in chat attachments
-agents: wire editor to cinematography plan
-docs: update setup instructions
-deps: bump vite in web
-```
-
-Common scopes: `api`, `web`, `agents`, `video`, `audio`, `docs`, `deps`, `scripts`.
-
-## Notes
-
-- Generated MP4s live in `api/generated/` until manually removed.
-- **Text on screen** — copy is measured against the 9:16 safe area. If it does not
-  fit on one screen, FrameFusion splits it across up to **3 screens** with balanced
-  timing (narrated shorts split audio time by word count per screen).
-- Chat history is browser-local only — not synced across devices.
-- Output filenames must end in `.mp4` with no path separators.
-- Colors use `#RRGGBB` format.
-- External APIs (Gemini, Pexels, ElevenLabs) have their own rate limits and billing.
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md). Security
+notes and how to report a vulnerability privately are in [SECURITY.md](SECURITY.md).
 
 ## License
 
-[MIT License](LICENSE)
+FrameFusion's source code is released under the [MIT License](LICENSE). Third-party packages,
+bundled assets and external services have their own terms; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Media you generate with FrameFusion can contain
+material from AI providers, Microsoft's speech service, ElevenLabs, Pexels, Openverse or other
+sources. Check those terms and each asset's licence before you publish or sell it.
