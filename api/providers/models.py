@@ -22,6 +22,8 @@ class MediaService(models.TextChoices):
 
     ELEVENLABS = "elevenlabs", "ElevenLabs"
     PEXELS = "pexels", "Pexels"
+    PIXABAY = "pixabay", "Pixabay"
+    BRAVE = "brave", "Brave Search"
 
 
 SERVICE_CHOICES = [*Provider.choices, *MediaService.choices]

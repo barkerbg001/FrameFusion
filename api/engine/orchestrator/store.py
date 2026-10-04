@@ -23,7 +23,12 @@ class ProjectStore(Protocol):
 
     # Assets ---------------------------------------------------------------
     def save_image(
-        self, image: ValidatedImage, candidate: ImageCandidate, *, scene_index: int | None
+        self,
+        image: ValidatedImage,
+        candidate: ImageCandidate,
+        *,
+        scene_index: int | None,
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]: ...
 
     def list_assets(self, kind: str | None = None) -> list[dict[str, Any]]: ...

@@ -283,8 +283,13 @@ def _contents(messages: list[Message]) -> list[types.Content]:
                 )
             contents.append(types.Content(role="model", parts=parts or [types.Part(text="")]))
         else:
+            user_parts = [types.Part.from_text(text=message.content)] if message.content else []
+            for image in message.images:
+                if image.text:
+                    user_parts.append(types.Part.from_text(text=image.text))
+                user_parts.append(types.Part.from_bytes(data=image.data, mime_type=image.mime_type))
             contents.append(
-                types.Content(role="user", parts=[types.Part.from_text(text=message.content)])
+                types.Content(role="user", parts=user_parts or [types.Part.from_text(text="")])
             )
     flush()
     return contents

@@ -71,6 +71,8 @@ def asset_record(asset: MediaAsset) -> dict[str, Any]:
         "width": asset.width,
         "height": asset.height,
         "scene_index": (asset.metadata or {}).get("scene_index"),
+        "user_supplied": asset.user_supplied,
+        "dhash": (asset.metadata or {}).get("dhash"),
     }
 
 
@@ -84,7 +86,12 @@ class DjangoProjectStore:
     # -- assets ---------------------------------------------------------
 
     def save_image(
-        self, image: ValidatedImage, candidate: ImageCandidate, *, scene_index: int | None
+        self,
+        image: ValidatedImage,
+        candidate: ImageCandidate,
+        *,
+        scene_index: int | None,
+        metadata: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         existing = MediaAsset.objects.filter(project=self.project, checksum=image.sha256).first()
         if existing is not None and media.generated_file(existing.file_name):
@@ -124,7 +131,20 @@ class DjangoProjectStore:
             "mime": image.mime,
             "width": image.width,
             "height": image.height,
-            "metadata": {"scene_index": scene_index, "usage_note": candidate.usage_note[:400]},
+            "metadata": {
+                **(metadata or {}),
+                "scene_index": scene_index,
+                "usage_note": candidate.usage_note[:400],
+                **{
+                    key: value
+                    for key, value in (
+                        ("discovered_via", candidate.discovered_via),
+                        ("publisher", (candidate.publisher or "")[:200] or None),
+                        ("found_on_page", candidate.found_on_page),
+                    )
+                    if value is not None
+                },
+            },
         }
         try:
             with transaction.atomic():
@@ -274,10 +294,24 @@ class DjangoProjectStore:
 
 
 def replace_scene_asset(
-    project: Project, scene_index: int, asset: MediaAsset | None
+    project: Project,
+    scene_index: int,
+    asset: MediaAsset | None,
+    *,
+    illustrative: bool = False,
+    title_card: bool = False,
 ) -> dict[str, Any]:
-    """Point a scene at a different image (or none) and invalidate the render."""
-    from engine.orchestrator.schemas import SceneAsset, SceneGap, VisualResult, downstream_of
+    """Point a scene at a different image (or none, or a title card); invalidate the render.
+
+    Only the render and QC depend on scene images, so narration and other scenes are reused.
+    """
+    from engine.orchestrator.schemas import (
+        SceneAsset,
+        SceneGap,
+        SceneVisual,
+        VisualResult,
+        downstream_of,
+    )
 
     store = DjangoProjectStore(project)
     task = store.latest_task("visuals")
@@ -290,18 +324,50 @@ def replace_scene_asset(
     result = VisualResult.model_validate(task.output)
     assets = [item for item in result.scene_assets if item.scene_index != scene_index]
     gaps = [gap for gap in result.gaps if gap.scene_index != scene_index]
+    state = result.scene_state(scene_index) or SceneVisual(scene_index=scene_index)
     if asset is not None:
+        label = "Chosen by you as an illustration" if illustrative else "Chosen by you"
         assets.append(
             SceneAsset(
                 scene_index=scene_index,
                 asset_id=str(asset.pk),
                 candidate_id=asset.candidate_id,
-                reason="Chosen by you",
+                reason=label,
                 selected_by="user",
+                verification="user",
+                rights_status="documented" if asset.rights_status == "documented" else "unknown",
+                illustrative=illustrative,
             )
         )
+        state.status = "selected"
+        state.note = ""
+        state.alternatives = [
+            item for item in state.alternatives if item.get("candidate_id") != asset.candidate_id
+        ]
+    elif title_card:
+        gaps.append(
+            SceneGap(
+                scene_index=scene_index,
+                reason="Title card chosen by you.",
+                actions=["upload", "paste_url"],
+            )
+        )
+        state.status = "title_card"
+        state.note = "Title card chosen by you."
     else:
-        gaps.append(SceneGap(scene_index=scene_index, reason="Removed by you"))
+        gaps.append(
+            SceneGap(
+                scene_index=scene_index,
+                reason="Removed by you",
+                actions=["search_other_source", "upload", "paste_url", "title_card"],
+            )
+        )
+        state.status = "awaiting_review" if state.alternatives else "no_suitable_result"
+        state.note = "Removed by you."
+    result.scenes = sorted(
+        [item for item in result.scenes if item.scene_index != scene_index] + [state],
+        key=lambda item: item.scene_index,
+    )
     result.scene_assets = sorted(assets, key=lambda item: item.scene_index)
     result.gaps = sorted(gaps, key=lambda item: item.scene_index)
     ProductionTask.objects.filter(pk=task.id).update(

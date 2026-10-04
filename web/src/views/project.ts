@@ -9,17 +9,26 @@ import {
   type Job,
   type JobEvent,
   type MediaAsset,
-  type ImageCandidate,
+  type ImageAssessment,
+  type ImageCheckResult,
+  type ImageDecision,
+  type ImageSearchResult,
   type ImageSearchSource,
+  type ImageVerification,
   type NarrationProvider,
   type PersonalityId,
   type ProductionOptions,
+  type ProductionState,
   type ProductionTask,
   type ProjectDetail,
   type Route,
   type SceneState,
+  type SearchedImage,
+  type SceneVisualState,
+  type SceneVisualStatus,
   type Stage,
   type TaskStatus,
+  type VisualBrief,
 } from '../api.ts'
 import { avatar, personality, PERSONALITIES, PERSONALITY_IDS, type AvatarState } from '../avatars.ts'
 import { h, icon, relativeTime, replace, spinner } from '../dom.ts'
@@ -107,12 +116,58 @@ const EVENT_STEP: Record<string, StepState> = {
 
 const RIGHTS_LABEL = { documented: 'Licence recorded', unknown: 'Rights unknown' } as const
 
+const SCENE_STATUS: Record<SceneVisualStatus, { label: string; tone: '' | 'tag-ok' | 'tag-warn' | 'tag-danger' }> = {
+  searching: { label: 'Searching', tone: '' },
+  candidates_found: { label: 'Candidates found', tone: '' },
+  awaiting_review: { label: 'Awaiting your review', tone: 'tag-warn' },
+  selected: { label: 'Image selected', tone: 'tag-ok' },
+  no_suitable_result: { label: 'No suitable image found', tone: 'tag-warn' },
+  download_failed: { label: 'Download failed', tone: 'tag-danger' },
+  title_card: { label: 'Title card', tone: '' },
+}
+
+const DECISION_LABEL: Record<ImageDecision, string> = {
+  accept: 'Matches the brief',
+  review: 'Needs your review',
+  illustrative: 'Illustrative only',
+  reject: 'Rejected',
+}
+
+const VERIFICATION_LABEL: Record<ImageVerification, string> = {
+  vision: 'Visually checked',
+  metadata: 'Visually unverified',
+  none: 'Not checked',
+  user: 'Chosen by you',
+}
+
+const SPECIFICITY_LABEL: Record<VisualBrief['specificity'], string> = {
+  exact: 'That exact subject',
+  representative: 'A representative example',
+  generic: 'Any good example',
+}
+
+const SOURCE_NAME: Record<string, string> = {
+  auto: 'licensed sources',
+  pexels: 'Pexels',
+  pixabay: 'Pixabay',
+  wikimedia: 'Wikimedia Commons',
+  openverse: 'Openverse',
+  brave: 'Brave web search',
+  url: 'your link',
+  webpage: 'your webpage',
+  link: 'your link',
+  upload: 'your upload',
+}
+
+const GOOGLE_IMAGES_SEARCH = 'https://www.google.com/search?udm=2&q='
+
 const JOB_TITLE: Record<Job['kind'], string> = {
   production: 'Production run',
   chat: 'Chat reply',
   agent: 'Agent run',
   render: 'Render',
   narration: 'Narration retry',
+  image_check: 'Image check',
 }
 
 const PROVIDER_NAME: Record<NarrationProvider, string> = { edge: 'Edge TTS', elevenlabs: 'ElevenLabs' }
@@ -493,8 +548,10 @@ export function projectView(outlet: HTMLElement, params: Record<string, string>)
     if (disposed) return
     upsertProject(detail)
 
-    const active = detail.jobs.find((j) => !isTerminal(j.status))
-    const latest = active ?? detail.jobs[0] ?? null
+    // Image checks report inside the scene search that started them.
+    const pageJobs = detail.jobs.filter((j) => j.kind !== 'image_check')
+    const active = pageJobs.find((j) => !isTerminal(j.status))
+    const latest = active ?? pageJobs[0] ?? null
     if (initial) {
       replace(outlet, page)
       if (latest) {
@@ -1363,9 +1420,51 @@ export function projectView(outlet: HTMLElement, params: Record<string, string>)
     )
   }
 
+  const sceneCards = new Map<number, HTMLElement>()
+  const scenesHead = h('div', { class: 'scenes-summary' })
+
+  function sceneStatus(scene: SceneState, hasImage: boolean): SceneVisualStatus | null {
+    if (scene.visual?.status) return scene.visual.status
+    if (hasImage) return 'selected'
+    return scene.gap ? 'no_suitable_result' : null
+  }
+
+  function paintScenesHead(): void {
+    if (!detail) return
+    const scenes = detail.production.scenes
+    const withImages = scenes.filter((scene) => assetById(scene.asset_id)).length
+    const review = scenes.filter((scene) => sceneStatus(scene, Boolean(assetById(scene.asset_id))) === 'awaiting_review').length
+    const render = detail.production.tasks.find((task) => task.stage === 'render')
+    const stale = render && (render.status === 'invalidated' || render.status === 'proposed')
+    const counts = [`${scenes.length} scenes`, `${withImages} with images`]
+    if (withImages < scenes.length) counts.push(`${scenes.length - withImages} without`)
+    if (review) counts.push(`${review} awaiting review`)
+    replace(
+      scenesHead,
+      h(
+        'div',
+        { class: 'scenes-head' },
+        h('p', { class: 'muted' }, counts.join(' · ')),
+        h(
+          'button',
+          {
+            type: 'button',
+            class: `button button-small${stale ? ' button-primary' : ''}`,
+            disabled: busy(),
+            onclick: () => void rerunFrom('render'),
+          },
+          icon('film', 14),
+          'Re-render video',
+        ),
+      ),
+      stale ? h('p', { class: 'field-warn' }, icon('alert', 14), 'Scene images changed since the last render. Re-render to update the video.') : null,
+    )
+  }
+
   function renderScenes(): void {
     if (!detail) return
     const scenes = detail.production.scenes
+    sceneCards.clear()
     if (!scenes.length) {
       replace(
         scenesSection,
@@ -1373,124 +1472,231 @@ export function projectView(outlet: HTMLElement, params: Record<string, string>)
           'div',
           { class: 'panel-empty' },
           icon('scenes', 20),
-          h('p', null, 'Scenes appear here once the script specialist has written the script. The visual specialist then finds one image per scene, and you can replace or remove any of them.'),
+          h('p', null, 'Scenes appear here once the script specialist has written the script. The visual specialist then writes a brief per scene and looks for an image that genuinely matches it, or tells you honestly that it found none.'),
         ),
       )
       return
     }
-    const withImages = scenes.filter((scene) => assetById(scene.asset_id)).length
-    const render = detail.production.tasks.find((task) => task.stage === 'render')
-    const stale = render && (render.status === 'invalidated' || render.status === 'proposed')
-    const rerender = h(
-      'button',
-      {
-        type: 'button',
-        class: `button button-small${stale ? ' button-primary' : ''}`,
-        disabled: busy(),
-        onclick: () => void rerunFrom('render'),
-      },
-      icon('film', 14),
-      'Re-render video',
-    )
-    replace(
-      scenesSection,
+    paintScenesHead()
+    const cards = scenes.map((scene) => {
+      const card = sceneCard(scene)
+      sceneCards.set(scene.index, card)
+      return card
+    })
+    replace(scenesSection, scenesHead, h('ol', { class: 'scene-list' }, cards))
+  }
+
+  /** Apply a new production state but repaint only the scene that changed. */
+  function applySceneChange(production: ProductionState, sceneIndex: number): void {
+    if (!detail) return
+    detail.production = production
+    const scene = production.scenes.find((item) => item.index === sceneIndex)
+    const current = sceneCards.get(sceneIndex)
+    if (!scene || !current?.isConnected) {
+      renderScenes()
+    } else {
+      const next = sceneCard(scene)
+      current.replaceWith(next)
+      sceneCards.set(sceneIndex, next)
+      paintScenesHead()
+    }
+    renderActivity()
+  }
+
+  function rememberAsset(asset: MediaAsset): void {
+    if (detail && !detail.media.some((item) => item.id === asset.id)) detail.media.unshift(asset)
+  }
+
+  function briefView(scene: SceneState, visual: SceneVisualState): HTMLElement | null {
+    const brief = visual.brief
+    if (!brief) return scene.visual_description ? h('p', { class: 'muted' }, `Visual: ${scene.visual_description}`) : null
+    const row = (term: string, value: string): HTMLElement => h('div', null, h('dt', null, term), h('dd', null, value))
+    const names = brief.named_entities.map((entity) => entity.name).join(', ')
+    return h(
+      'details',
+      { class: 'scene-brief' },
+      h('summary', null, `Must show: ${brief.subject}`),
       h(
-        'div',
-        { class: 'scenes-head' },
-        h('p', { class: 'muted' }, `${scenes.length} scenes · ${withImages} with images${withImages < scenes.length ? ` · ${scenes.length - withImages} need an image` : ''}`),
-        rerender,
+        'dl',
+        { class: 'brief-list' },
+        brief.action ? row('Action', brief.action) : null,
+        names ? row('Named subject', names) : null,
+        row('Accuracy', SPECIFICITY_LABEL[brief.specificity]),
+        row('Kind', brief.visual_type),
+        brief.composition ? row('Framing', brief.composition) : null,
+        brief.acceptable_alternatives.length ? row('Also fine', brief.acceptable_alternatives.join('; ')) : null,
+        brief.excluded.length ? row('Avoid', brief.excluded.join(', ')) : null,
       ),
-      stale ? h('p', { class: 'field-warn' }, icon('alert', 14), 'Scene images changed since the last render. Re-render to update the video.') : null,
-      h('ol', { class: 'scene-list' }, scenes.map((scene) => sceneCard(scene))),
+      visual.searches.length
+        ? h(
+            'ul',
+            { class: 'brief-searches' },
+            visual.searches.map((search) =>
+              h(
+                'li',
+                null,
+                `“${search.query}” on ${SOURCE_NAME[search.source] ?? search.source}: `,
+                search.error ? search.error : `${search.count ?? 0} result${search.count === 1 ? '' : 's'}`,
+              ),
+            ),
+          )
+        : null,
+      brief.derived ? h('p', { class: 'field-hint' }, 'This brief was derived from the script because the model’s brief was unusable.') : null,
+    )
+  }
+
+  function assessmentTags(assessment: ImageAssessment | null, verification: ImageVerification | null): HTMLElement | null {
+    const checked = verification ?? assessment?.verification ?? null
+    if (!assessment && !checked) return null
+    return h(
+      'div',
+      { class: 'tag-row' },
+      assessment ? h('span', { class: `tag ${assessment.decision === 'accept' ? 'tag-ok' : assessment.decision === 'reject' ? 'tag-danger' : 'tag-warn'}` }, DECISION_LABEL[assessment.decision]) : null,
+      checked ? h('span', { class: `tag ${checked === 'metadata' || checked === 'none' ? 'tag-warn' : ''}` }, VERIFICATION_LABEL[checked]) : null,
+      assessment
+        ? h('span', { class: 'tag', title: 'Orders the candidates. A heuristic, not a probability.' }, `Fit ${assessment.score}/100`)
+        : null,
     )
   }
 
   function sceneCard(scene: SceneState): HTMLElement {
     const asset = assetById(scene.asset_id)
+    const visual = scene.visual
+    const status = sceneStatus(scene, Boolean(asset))
     const searchSlot = h('div', { class: 'scene-search', hidden: true })
+    const disabled = busy() || status === 'searching'
     const chosenBy = { visual: 'Chosen by the visual specialist', auto: 'Picked automatically', user: 'Chosen by you' } as const
-    const replaceButton = h(
-      'button',
-      {
-        type: 'button',
-        class: 'button button-small',
-        disabled: busy(),
-        'aria-expanded': 'false',
-        onclick: () => {
-          const open = searchSlot.hidden
-          searchSlot.hidden = !open
-          replaceButton.setAttribute('aria-expanded', String(open))
-          if (open && !searchSlot.firstChild) replace(searchSlot, imageSearch(scene))
-          if (open) searchSlot.querySelector<HTMLInputElement>('input')?.focus()
-        },
-      },
-      icon(asset ? 'refresh' : 'search', 14),
-      asset ? 'Replace' : 'Find an image',
-    )
-    const removeButton = asset
-      ? h(
-          'button',
-          {
-            type: 'button',
-            class: 'button button-small button-danger',
-            disabled: busy(),
-            onclick: async () => {
+
+    const openSearch = (source: ImageSearchSource = 'auto'): void => {
+      searchSlot.hidden = false
+      replace(searchSlot, imageSearch(scene, source))
+      searchSlot.querySelector<HTMLInputElement>('input')?.focus()
+    }
+    const button = (label: string, glyph: string, onclick: () => void, extra = ''): HTMLButtonElement =>
+      h('button', { type: 'button', class: `button button-small${extra}`, disabled, onclick }, icon(glyph, 14), label)
+
+    const fileInput = h('input', { type: 'file', accept: 'image/jpeg,image/png,image/webp', hidden: true, 'aria-label': `Upload an image for scene ${scene.index + 1}` })
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files?.[0]
+      fileInput.value = ''
+      if (!file) return
+      try {
+        const saved = await studio.uploadImage(projectId, file, scene.index)
+        rememberAsset(saved.asset)
+        if (saved.production) applySceneChange(saved.production, scene.index)
+        renderMedia()
+        toast('Image uploaded and marked “rights unknown” until you confirm you may use it. Re-render to update the video.', 'success', 7000)
+      } catch (error) {
+        toast(errorMessage(error), 'error', 8000)
+      }
+    })
+
+    const actions: (HTMLElement | null)[] = [
+      button(asset ? 'Search again' : 'Find an image', asset ? 'refresh' : 'search', () => openSearch()),
+      button('Google Images', 'globe', () => openSearch('link')),
+      button('Upload', 'upload', () => fileInput.click()),
+      !asset && status !== 'title_card'
+        ? button('Use a title card', 'captions', async () => {
+            try {
+              applySceneChange(await studio.useTitleCard(projectId, scene.index), scene.index)
+              toast('Scene set to a title card. Re-render to update the video.', 'success')
+            } catch (error) {
+              toast(errorMessage(error), 'error')
+            }
+          })
+        : null,
+      asset
+        ? button(
+            'Remove',
+            'trash',
+            async () => {
               const ok = await confirmDialog({
                 title: `Remove the image from scene ${scene.index + 1}?`,
                 body: 'The scene renders with a plain title card until you pick another image. The file stays in your media library.',
                 confirm: 'Remove image',
                 danger: true,
               })
-              if (!ok || !detail) return
+              if (!ok) return
               try {
-                detail.production = await studio.setSceneImage(projectId, scene.index, null)
+                applySceneChange(await studio.setSceneImage(projectId, scene.index, null), scene.index)
                 toast('Image removed. Re-render to update the video.', 'success')
-                renderScenes()
-                renderActivity()
               } catch (error) {
                 toast(errorMessage(error), 'error')
               }
             },
-          },
-          icon('trash', 14),
-          'Remove',
-        )
-      : null
+            ' button-danger',
+          )
+        : null,
+    ]
+
+    const statusInfo = status ? SCENE_STATUS[status] : null
+    const unresolvedText = status === 'title_card' ? 'You chose a title card for this scene.' : visual?.note || scene.gap || (status === 'searching' ? 'The visual specialist is looking.' : 'No image yet.')
+    const alternatives = visual?.alternatives ?? []
     return h(
       'li',
-      { class: `scene-card${scene.gap && !asset ? ' scene-gap' : ''}` },
+      { class: `scene-card${!asset && status !== 'title_card' && status !== 'searching' ? ' scene-gap' : ''}` },
       h(
         'div',
         { class: 'scene-media' },
         asset
           ? h('img', { src: asset.url, alt: `Scene ${scene.index + 1}: ${asset.source?.title ?? asset.display_name}`, loading: 'lazy', decoding: 'async' })
-          : h('div', { class: 'scene-placeholder', 'aria-hidden': 'true' }, icon('image', 22)),
+          : h('div', { class: 'scene-placeholder', 'aria-hidden': 'true' }, icon(status === 'title_card' ? 'captions' : 'image', 22)),
       ),
       h(
         'div',
         { class: 'scene-body' },
-        h('h4', null, `Scene ${scene.index + 1}`),
+        h(
+          'div',
+          { class: 'scene-title' },
+          h('h4', null, `Scene ${scene.index + 1}`),
+          statusInfo
+            ? h('span', { class: `tag ${statusInfo.tone}`, role: 'status' }, status === 'searching' ? spinner('Searching') : null, statusInfo.label)
+            : null,
+        ),
         scene.narration || scene.on_screen_text ? h('p', { class: 'scene-text' }, scene.narration || scene.on_screen_text) : null,
-        scene.visual_description ? h('p', { class: 'muted' }, `Visual: ${scene.visual_description}`) : null,
+        visual ? briefView(scene, visual) : null,
         asset ? sourceLine(asset) : null,
+        asset ? assessmentTags(visual?.assessment ?? null, visual?.verification ?? null) : null,
+        asset && visual?.illustrative ? h('p', { class: 'field-hint' }, icon('info', 12), ' Used as an illustration, not the exact subject.') : null,
+        asset && visual?.assessment?.visible_content ? h('p', { class: 'muted' }, `Seen in the image: ${visual.assessment.visible_content}`) : null,
         asset && scene.selected_by ? h('p', { class: 'muted scene-why' }, chosenBy[scene.selected_by], scene.reason ? ` · ${scene.reason}` : '') : null,
-        !asset ? h('p', { class: 'field-warn' }, icon('alert', 14), scene.gap ? `No image: ${scene.gap}` : 'No image yet.') : null,
-        h('div', { class: 'scene-actions' }, replaceButton, removeButton),
-        searchSlot,
+        asset && visual?.rights_status === 'unknown' && scene.selected_by !== 'user'
+          ? h('p', { class: 'field-warn' }, icon('alert', 14), 'Reuse rights are unknown. It stays out of the video until you choose it yourself.')
+          : null,
+        !asset ? h('p', { class: status === 'title_card' ? 'muted' : 'field-warn' }, status === 'title_card' ? null : icon('alert', 14), unresolvedText) : null,
+        !asset && visual?.missing ? h('p', { class: 'muted' }, `A suitable image would show: ${visual.missing}`) : null,
+        h('div', { class: 'scene-actions' }, actions, fileInput),
       ),
+      alternatives.length
+        ? h(
+            'details',
+            { class: 'scene-alternatives', open: !asset },
+            h('summary', null, `${alternatives.length} other candidate${alternatives.length === 1 ? '' : 's'} checked against the brief`),
+            h('ul', { class: 'candidate-grid' }, alternatives.map((alternative) => candidateCard(alternative, scene))),
+          )
+        : null,
+      searchSlot,
     )
   }
 
-  function imageSearch(scene: SceneState): HTMLElement {
-    const query = h('input', { type: 'text', value: scene.image_query, maxlength: 500, 'aria-label': 'Search terms or URL', autocomplete: 'off' })
+  function imageSearch(scene: SceneState, initialSource: ImageSearchSource = 'auto'): HTMLElement {
+    const startQuery = scene.visual?.brief?.queries[0]?.query ?? scene.image_query
+    const query = h('input', { type: 'text', value: startQuery, maxlength: 4000, 'aria-label': 'Search terms or link', autocomplete: 'off' })
+    const keyed = (service: 'pexels' | 'pixabay' | 'brave'): boolean => Boolean(state.integrations?.[service]?.configured)
+    const option = (value: ImageSearchSource, label: string, ready = true): HTMLOptionElement =>
+      h('option', { value, disabled: !ready, selected: value === initialSource }, ready ? label : `${label} (not set up)`)
     const source = h(
       'select',
       { 'aria-label': 'Source' },
-      h('option', { value: 'auto' }, 'Best available'),
-      h('option', { value: 'pexels', disabled: !state.integrations?.pexels.configured }, state.integrations?.pexels.configured ? 'Pexels' : 'Pexels (not set up)'),
-      h('option', { value: 'openverse' }, 'Openverse (Creative Commons)'),
-      h('option', { value: 'url' }, 'Image URL'),
-      h('option', { value: 'webpage' }, 'Images on a webpage'),
+      option('auto', 'Best licensed sources'),
+      option('wikimedia', 'Wikimedia Commons (named places, people, diagrams)'),
+      option('pexels', 'Pexels', keyed('pexels')),
+      option('pixabay', 'Pixabay', keyed('pixabay')),
+      option('openverse', 'Openverse (Creative Commons)'),
+      option('brave', 'Brave web search (rights unknown)', keyed('brave')),
+      option('link', 'Link from Google Images or any page'),
+      option('url', 'Image URL'),
+      option('webpage', 'Images on a webpage'),
     )
     const orientation = h(
       'select',
@@ -1502,37 +1708,135 @@ export function projectView(outlet: HTMLElement, params: Record<string, string>)
     )
     const submit = h('button', { type: 'submit', class: 'button button-small button-primary' }, icon('search', 14), 'Search')
     const results = h('div', { class: 'candidate-results', 'aria-live': 'polite' })
+    // Opens in your own browser; FrameFusion never requests Google itself.
+    const googleTerms = startQuery || scene.visual?.brief?.subject || scene.visual_description || ''
+    const googleHelp = h(
+      'div',
+      { class: 'google-assist', hidden: true },
+      h(
+        'a',
+        {
+          class: 'button button-small',
+          href: `${GOOGLE_IMAGES_SEARCH}${encodeURIComponent(googleTerms)}`,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+        },
+        icon('external', 14),
+        googleTerms ? `Search Google Images for “${googleTerms}”` : 'Open Google Images',
+      ),
+      h(
+        'p',
+        { class: 'field-hint' },
+        'Open a result, copy its address (or right-click the large image and copy the image address) and paste it here. FrameFusion looks for the original on the publisher’s page, checks it against the brief and downloads it safely. Google previews and results pages can’t be used, and rights stay unknown until you approve them.',
+      ),
+    )
     const syncPlaceholder = (): void => {
-      const isUrl = source.value === 'url' || source.value === 'webpage'
-      query.placeholder = isUrl ? 'https://…' : 'e.g. honeybee on a flower'
-      if (isUrl && query.value === scene.image_query) query.value = ''
+      const isLink = source.value === 'url' || source.value === 'webpage' || source.value === 'link'
+      query.placeholder = source.value === 'link' ? 'Paste the Google result, page or image link' : isLink ? 'https://…' : 'e.g. honeybee on a flower'
+      if (isLink && query.value === startQuery) query.value = ''
+      orientation.hidden = source.value === 'link'
+      googleHelp.hidden = source.value !== 'link'
     }
     source.addEventListener('change', syncPlaceholder)
     const form = h(
       'form',
       { class: 'image-search-form' },
+      googleHelp,
       h('div', { class: 'image-search-row' }, query, source, orientation, submit),
-      h('p', { class: 'field-hint' }, 'Searching is free. Licences come from the source; check them before publishing. Images from your own links are marked “rights unknown”.'),
+      h(
+        'p',
+        { class: 'field-hint' },
+        'Licences come from the source; check them before publishing. Brave web search uses paid API credits and finds images whose rights are unknown, as do your own links.',
+      ),
       results,
     )
+
+    const showResults = (found: ImageSearchResult): void => {
+      let candidates = found.candidates
+      const grid = h('ul', { class: 'candidate-grid' })
+      const paint = (): void => replace(grid, candidates.map((candidate) => candidateCard(candidate, scene)))
+      const checkable = candidates.filter((candidate) => candidate.assessment?.decision !== 'reject').slice(0, 6)
+      const checkNote = h('div', { 'aria-live': 'polite' })
+      const visionReady = Boolean(state.readiness?.production.ready)
+      const check = h(
+        'button',
+        {
+          type: 'button',
+          class: 'button button-small',
+          disabled: !visionReady,
+          title: visionReady ? 'Uses one paid call to the Production model.' : 'Set up the Production model in Settings to check images visually.',
+        },
+        icon('eye', 14),
+        `Check ${checkable.length === 1 ? 'it' : `${checkable.length} images`} with vision`,
+      )
+      check.addEventListener('click', async () => {
+        check.disabled = true
+        replace(checkNote, h('p', { class: 'muted' }, spinner('Checking'), ' The visual specialist is looking at the images…'))
+        let started: Job
+        try {
+          started = await studio.checkImages(projectId, scene.index, checkable.map((candidate) => candidate.candidate_id))
+        } catch (error) {
+          replace(checkNote, h('p', { class: 'form-error', role: 'alert' }, errorMessage(error)))
+          check.disabled = false
+          return
+        }
+        const finish = (done: Job): void => {
+          if (done.status !== 'succeeded') {
+            replace(checkNote, h('p', { class: 'form-error', role: 'alert' }, done.error?.message ?? 'The image check didn’t finish.'))
+            check.disabled = false
+            return
+          }
+          const result = done.result as unknown as ImageCheckResult
+          const byId = new Map(result.assessments.map((assessment) => [assessment.candidate_id, assessment]))
+          candidates = candidates
+            .map((candidate) => ({ ...candidate, assessment: byId.get(candidate.candidate_id) ?? candidate.assessment }))
+            .sort((a, b) => (b.assessment?.score ?? 0) - (a.assessment?.score ?? 0))
+          paint()
+          replace(
+            checkNote,
+            result.limitations.length ? h('ul', { class: 'step-limits' }, result.limitations.map((note) => h('li', null, note))) : null,
+            h('p', { class: 'muted' }, result.vision_available ? 'Checked against the brief by looking at each image.' : 'The images couldn’t be inspected visually; the metadata check still applies.'),
+          )
+        }
+        if (isTerminal(started.status)) {
+          finish(started)
+        } else {
+          const watch: JobWatcher = watchJob(started.id, {
+            onUpdate: () => {
+              if (disposed || !form.isConnected) watch.stop()
+            },
+            onDone: finish,
+            onError: (error) => {
+              replace(checkNote, h('p', { class: 'form-error', role: 'alert' }, errorMessage(error)))
+              check.disabled = false
+            },
+          })
+        }
+      })
+      paint()
+      replace(
+        results,
+        found.limitations.length ? h('ul', { class: 'step-limits' }, found.limitations.map((note) => h('li', null, note))) : null,
+        candidates.length
+          ? [checkable.length && candidates.some((candidate) => candidate.assessment) ? h('div', { class: 'scene-actions' }, check) : null, checkNote, grid]
+          : h('p', { class: 'muted' }, found.source === 'link' ? 'No suitable image found on that link. Try another result.' : 'No usable images found. Try other words or another source.'),
+      )
+    }
+
     form.addEventListener('submit', async (event) => {
       event.preventDefault()
       const text = query.value.trim()
       if (!text) return
       submit.disabled = true
-      replace(results, loadingState('Searching…'))
+      replace(results, loadingState(source.value === 'link' ? 'Finding the original image…' : 'Searching…'))
       try {
-        const found = await studio.searchImages(projectId, {
-          query: text,
-          source: source.value as ImageSearchSource,
-          orientation: orientation.value as 'portrait' | 'landscape' | 'square' | 'any',
-        })
-        replace(
-          results,
-          found.limitations.length ? h('ul', { class: 'step-limits' }, found.limitations.map((note) => h('li', null, note))) : null,
-          found.candidates.length
-            ? h('ul', { class: 'candidate-grid' }, found.candidates.map((candidate) => candidateCard(candidate, scene)))
-            : h('p', { class: 'muted' }, 'No usable images found. Try other words or another source.'),
+        showResults(
+          await studio.searchImages(projectId, {
+            query: text,
+            source: source.value as ImageSearchSource,
+            orientation: orientation.value as 'portrait' | 'landscape' | 'square' | 'any',
+            scene_index: scene.index,
+          }),
         )
       } catch (error) {
         replace(results, h('p', { class: 'form-error', role: 'alert' }, errorMessage(error)))
@@ -1543,25 +1847,28 @@ export function projectView(outlet: HTMLElement, params: Record<string, string>)
     return form
   }
 
-  function candidateCard(candidate: ImageCandidate, scene: SceneState): HTMLElement {
-    const use = h('button', { type: 'button', class: 'button button-small' }, icon('download', 14), `Use for scene ${scene.index + 1}`)
+  function candidateCard(candidate: SearchedImage, scene: SceneState): HTMLElement {
+    const assessment = candidate.assessment ?? null
+    const illustrative = assessment?.decision === 'illustrative'
+    const label = illustrative
+      ? 'Use as a labelled illustration'
+      : candidate.rights_status === 'unknown'
+        ? `Approve rights and use for scene ${scene.index + 1}`
+        : `Use for scene ${scene.index + 1}`
+    const use = h('button', { type: 'button', class: 'button button-small' }, icon('download', 14), label)
     use.addEventListener('click', async () => {
       use.disabled = true
       replace(use, spinner('Downloading'), ' Downloading…')
       try {
-        const saved = await studio.downloadImage(projectId, candidate.candidate_id, scene.index)
-        if (detail) {
-          if (!detail.media.some((asset) => asset.id === saved.asset.id)) detail.media.unshift(saved.asset)
-          if (saved.production) detail.production = saved.production
-        }
+        const saved = await studio.downloadImage(projectId, candidate.candidate_id, scene.index, illustrative)
+        rememberAsset(saved.asset)
         toast(`${saved.reused_existing_file ? 'Already downloaded; reused the file.' : 'Image saved.'} Re-render to update the video.`, 'success')
-        renderScenes()
-        renderActivity()
+        if (saved.production) applySceneChange(saved.production, scene.index)
         renderMedia()
       } catch (error) {
         toast(errorMessage(error), 'error', 8000)
         use.disabled = false
-        replace(use, icon('download', 14), `Use for scene ${scene.index + 1}`)
+        replace(use, icon('download', 14), label)
       }
     })
     const size = candidate.width && candidate.height ? `${candidate.width}×${candidate.height}` : null
@@ -1575,7 +1882,23 @@ export function projectView(outlet: HTMLElement, params: Record<string, string>)
         'div',
         { class: 'candidate-body' },
         h('strong', null, candidate.title || 'Untitled'),
-        h('p', { class: 'muted' }, [candidate.provider, candidate.creator, size].filter(Boolean).join(' · ')),
+        h(
+          'p',
+          { class: 'muted' },
+          [candidate.publisher ?? SOURCE_NAME[candidate.provider] ?? candidate.provider, candidate.creator, size].filter(Boolean).join(' · '),
+        ),
+        candidate.discovered_via === 'google_images' || candidate.found_on_page !== undefined
+          ? h(
+              'div',
+              { class: 'tag-row' },
+              candidate.discovered_via === 'google_images' ? h('span', { class: 'tag' }, 'Found by you via Google Images') : null,
+              candidate.found_on_page === true ? h('span', { class: 'tag tag-ok' }, 'Original on the publisher’s page') : null,
+              candidate.found_on_page === false ? h('span', { class: 'tag tag-warn' }, 'Not seen on the publisher’s page') : null,
+            )
+          : null,
+        assessment ? assessmentTags(assessment, null) : null,
+        assessment?.visible_content ? h('p', null, `Seen: ${assessment.visible_content}`) : null,
+        assessment?.reasons.length ? h('ul', { class: 'candidate-reasons' }, assessment.reasons.slice(0, 3).map((reason) => h('li', null, reason))) : null,
         h(
           'p',
           null,
@@ -1584,7 +1907,9 @@ export function projectView(outlet: HTMLElement, params: Record<string, string>)
           h('span', { class: `tag ${candidate.rights_status === 'documented' ? 'tag-ok' : 'tag-warn'}` }, RIGHTS_LABEL[candidate.rights_status]),
         ),
         candidate.usage_note ? h('p', { class: 'field-hint' }, candidate.usage_note) : null,
-        candidate.source_page_url ? h('a', { class: 'link', href: candidate.source_page_url, target: '_blank', rel: 'noopener noreferrer' }, 'View source', icon('external', 12)) : null,
+        candidate.source_page_url
+          ? h('a', { class: 'link', href: candidate.source_page_url, target: '_blank', rel: 'noopener noreferrer' }, candidate.publisher ? 'Publisher’s page' : 'View source', icon('external', 12))
+          : null,
         use,
       ),
     )

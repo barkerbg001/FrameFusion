@@ -7,6 +7,7 @@ import { confirmDialog, errorMessage, errorState, focusHeading, loadingState, pa
 import {
   AI_PROVIDERS,
   credentialCard,
+  imageSourcePanel,
   importChoicesPanel,
   invalidateModels,
   modelsForm,
@@ -209,12 +210,12 @@ export function settingsView(outlet: HTMLElement, params: Record<string, string>
   }
 
   function renderMedia(): void {
-    const blocks = (['pexels'] as const).map((name) => {
+    const blocks = (['pexels', 'pixabay', 'brave'] as const).map((name) => {
       const provider = find(name)
       if (!provider) return null
       const panelSlot = h('div', { class: 'media-panel' })
       const paintPanel = (configured: boolean): void => {
-        replace(panelSlot, pexelsPanel(configured))
+        replace(panelSlot, name === 'pexels' ? pexelsPanel(configured) : imageSourcePanel(name))
       }
       paintPanel(provider.configured)
       return h(

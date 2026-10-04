@@ -9,7 +9,7 @@ export const ROUTES: Route[] = ['planner', 'production']
 /** How the single orchestrator talks. Capabilities are identical. */
 export type PersonalityId = 'director' | 'creative_partner'
 export type ProviderName = 'openrouter' | 'gemini' | 'anthropic'
-export type MediaServiceName = 'elevenlabs' | 'pexels'
+export type MediaServiceName = 'elevenlabs' | 'pexels' | 'pixabay' | 'brave'
 export type ServiceName = ProviderName | MediaServiceName
 export type Theme = 'system' | 'dark' | 'light'
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'
@@ -624,6 +624,78 @@ export interface SceneState {
   selected_by: 'visual' | 'auto' | 'user' | null
   reason: string | null
   gap: string | null
+  visual: SceneVisualState
+}
+
+export type SceneVisualStatus =
+  | 'searching'
+  | 'candidates_found'
+  | 'awaiting_review'
+  | 'selected'
+  | 'no_suitable_result'
+  | 'download_failed'
+  | 'title_card'
+
+export type VisualGapAction =
+  | 'search_other_source'
+  | 'refine_brief'
+  | 'upload'
+  | 'paste_url'
+  | 'choose_illustrative'
+  | 'title_card'
+
+export interface VisualBrief {
+  scene_index: number
+  purpose: string
+  subject: string
+  action: string
+  named_entities: { name: string; kind: string }[]
+  specificity: 'exact' | 'representative' | 'generic'
+  visual_type: 'photograph' | 'illustration' | 'diagram' | 'screenshot' | 'background'
+  orientation: string
+  min_short_side: number
+  composition: string
+  acceptable_alternatives: string[]
+  excluded: string[]
+  queries: { query: string; rationale: string }[]
+  derived: boolean
+}
+
+export type ImageDecision = 'accept' | 'review' | 'illustrative' | 'reject'
+export type ImageVerification = 'vision' | 'metadata' | 'none' | 'user'
+
+export interface ImageAssessment {
+  candidate_id: string
+  decision: ImageDecision
+  verification: ImageVerification
+  subject_match: 'yes' | 'partial' | 'no' | 'unknown'
+  scene_relevance: 'high' | 'medium' | 'low' | 'unknown'
+  identity_evidence: string
+  composition: string
+  technical_quality: string
+  rights: RightsStatus
+  /** Heuristic for ordering candidates, not a probability. */
+  score: number
+  visible_content: string
+  reasons: string[]
+}
+
+export interface SceneAlternative extends ImageCandidate {
+  assessment: ImageAssessment
+}
+
+export interface SceneVisualState {
+  status: SceneVisualStatus | null
+  brief: VisualBrief | null
+  searches: { query: string; source: string; count: number | null; error: string | null; rationale: string | null }[]
+  alternatives: SceneAlternative[]
+  assessment: ImageAssessment | null
+  note: string
+  verification: ImageVerification | null
+  rights_status: RightsStatus | null
+  illustrative: boolean
+  missing: string
+  actions: VisualGapAction[]
 }
 
 export interface ProductionState {
@@ -632,11 +704,23 @@ export interface ProductionState {
   brief: Record<string, unknown> | null
 }
 
-export type ImageSearchSource = 'auto' | 'pexels' | 'openverse' | 'url' | 'webpage'
+export type ImageSearchSource =
+  | 'auto'
+  | 'pexels'
+  | 'pixabay'
+  | 'wikimedia'
+  | 'openverse'
+  | 'brave'
+  | 'url'
+  | 'webpage'
+  /** A page or image link you paste, for example from a Google Images result you opened yourself. */
+  | 'link'
+
+export type ImageProvider = Exclude<ImageSearchSource, 'auto' | 'link'> | 'upload'
 
 export interface ImageCandidate {
   candidate_id: string
-  provider: 'pexels' | 'openverse' | 'url' | 'webpage'
+  provider: ImageProvider
   title: string
   width: number | null
   height: number | null
@@ -645,18 +729,38 @@ export interface ImageCandidate {
   license: string
   rights_status: RightsStatus
   source_page_url: string | null
+  description: string | null
+  tags: string[]
   preview_url: string | null
   creator_url: string | null
   license_url: string | null
   attribution: string | null
   usage_note: string
+  user_supplied: boolean
+  /** 'google_images' when you found it through Google Images; Google itself is never contacted. */
+  discovered_via?: string | null
+  publisher?: string | null
+  /** Whether the image was seen on the publisher's page. */
+  found_on_page?: boolean | null
+}
+
+export interface SearchedImage extends ImageCandidate {
+  /** Free metadata check against the scene's brief, present when a scene was given. */
+  assessment?: ImageAssessment
 }
 
 export interface ImageSearchResult {
   query: string
   source: ImageSearchSource
   count: number
-  candidates: ImageCandidate[]
+  candidates: SearchedImage[]
+  limitations: string[]
+}
+
+export interface ImageCheckResult {
+  scene_index: number
+  vision_available: boolean
+  assessments: ImageAssessment[]
   limitations: string[]
 }
 
@@ -670,7 +774,7 @@ export interface UsageEntry {
 
 export interface Job {
   id: string
-  kind: 'chat' | 'production' | 'agent' | 'render' | 'narration'
+  kind: 'chat' | 'production' | 'agent' | 'render' | 'narration' | 'image_check'
   agent: string | null
   status: JobStatus
   project_id: string | null
@@ -774,20 +878,48 @@ export const studio = {
     }),
   searchImages: (
     id: string,
-    body: { query: string; source: ImageSearchSource; orientation: 'portrait' | 'landscape' | 'square' | 'any' },
+    body: {
+      query: string
+      source: ImageSearchSource
+      orientation: 'portrait' | 'landscape' | 'square' | 'any'
+      scene_index?: number
+    },
   ) => request<ImageSearchResult>(`/api/projects/${id}/images/search`, { method: 'POST', body }),
-  downloadImage: (id: string, candidateId: string, sceneIndex: number | null) =>
+  /** Starts a paid vision check of search results against the scene's brief. */
+  checkImages: (id: string, sceneIndex: number, candidateIds: string[]) =>
+    request<Job>(`/api/projects/${id}/images/check`, {
+      method: 'POST',
+      body: { scene_index: sceneIndex, candidate_ids: candidateIds },
+    }),
+  downloadImage: (id: string, candidateId: string, sceneIndex: number | null, illustrative = false) =>
     request<{ asset: MediaAsset; reused_existing_file: boolean; production: ProductionState | null }>(
       `/api/projects/${id}/images/download`,
       {
         method: 'POST',
-        body: sceneIndex === null ? { candidate_id: candidateId } : { candidate_id: candidateId, scene_index: sceneIndex },
+        body:
+          sceneIndex === null
+            ? { candidate_id: candidateId }
+            : { candidate_id: candidateId, scene_index: sceneIndex, illustrative },
       },
     ),
+  uploadImage: (id: string, file: File, sceneIndex: number | null) => {
+    const form = new FormData()
+    form.append('file', file)
+    if (sceneIndex !== null) form.append('scene_index', String(sceneIndex))
+    return request<{ asset: MediaAsset; reused_existing_file: boolean; production: ProductionState | null }>(
+      `/api/projects/${id}/images/upload`,
+      { method: 'POST', body: form },
+    )
+  },
   setSceneImage: (id: string, sceneIndex: number, assetId: string | null) =>
     request<ProductionState>(`/api/projects/${id}/scenes/${sceneIndex}/image`, {
       method: 'PUT',
       body: { asset_id: assetId },
+    }),
+  useTitleCard: (id: string, sceneIndex: number) =>
+    request<ProductionState>(`/api/projects/${id}/scenes/${sceneIndex}/image`, {
+      method: 'PUT',
+      body: { title_card: true },
     }),
   deleteProject: (id: string) => request<void>(`/api/projects/${id}`, { method: 'DELETE' }),
   sendMessage: (id: string, content: string) =>

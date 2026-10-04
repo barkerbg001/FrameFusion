@@ -46,6 +46,8 @@ MEDIA_SERVICES = tuple(MediaService.values)
 MEDIA_FEATURES = {
     "elevenlabs": "Premium narration voices and AI-composed music",
     "pexels": "Stock photo and video search and footage-based renders",
+    "pixabay": "Licensed stock photos, illustrations and vector graphics for scenes",
+    "brave": "Web image discovery when stock sources have nothing (rights unknown, you review)",
 }
 
 

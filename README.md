@@ -131,6 +131,9 @@ Keys are redacted from logs, job events and error responses.
 | Edge TTS (no key) | Free narration for previews, narrated shorts and full productions | Loading the voice list | Default narration provider; needs internet |
 | ElevenLabs | Premium narration (if selected), standalone AI music | Lists voices and reads the subscription, no credits | Optional |
 | Pexels | Stock photo/video search, scene images | One curated-photos request, counts toward the hourly quota | Optional |
+| Pixabay | Scene images: stock photos, illustrations and vector graphics | One search (free, 100 requests a minute) | Optional |
+| Brave Search | Web image *discovery* when licensed sources have nothing (rights unknown, you review) | One image search, uses paid credits | Optional |
+| Wikimedia Commons (no key) | Scene images with per-file licences; best for landmarks, people, species, history | – | Used automatically |
 | Openverse (no key) | Creative Commons scene images with licence metadata | – | Used automatically; anonymous rate limits apply |
 
 **Models.** Choose a default provider and model, optionally override it for one of two model
@@ -140,18 +143,91 @@ personalities: both personalities use the same routes. FrameFusion never switche
 its own: if the selected provider fails, the job fails with a clear message and a link to
 Settings.
 
-**Scene images.** The visual specialist searches Pexels (if configured) and Openverse, inspects
-candidates, downloads one image per scene and records provider, creator, licence, licence URL,
-attribution, source page, dimensions and a SHA-256 checksum. Identical files are stored once.
-Automatic selection only uses images with a documented licence; images from a URL or webpage
-you supply are marked "rights unknown". Downloads go through an SSRF-safe fetcher (public
-addresses and ports 80/443 only, every redirect re-checked, size and type limits, bounded
-retries). In a project's **Scenes** tab you can see each scene's image, source and attribution,
-search for a replacement (Pexels, Openverse, an image URL or images on a webpage), remove it,
-and re-render. Licences come from the source; check them before publishing.
+**Scene images.** FrameFusion would rather leave a scene unresolved than show an unrelated
+picture. For each scene the visual specialist:
+
+1. writes a **visual brief**: subject, action, named people/places/things, how specific the
+   image must be (exact, representative or generic), visual type, orientation, exclusions and
+   up to four search queries that all keep the subject;
+2. **searches** the licensed sources suited to the brief (Wikimedia Commons and Openverse first
+   for named subjects, Pexels and Pixabay first for generic ones);
+3. **inspects** previews with the *Visual specialist* model, without showing it titles or tags,
+   because stock titles are often wrong;
+4. **ranks** and downloads only candidates that pass, through the SSRF-safe fetcher (public
+   addresses and ports 80/443 only, every redirect re-checked, size, type and dimension checks,
+   duplicate detection);
+5. otherwise **reports a gap**: the scene stays *No suitable image*, with the closest
+   alternatives and what a good image would show.
+
+It never takes the first result, never broadens a query until the subject is gone, and never
+treats a successful download as proof of relevance. Named subjects (the Eiffel Tower, a
+particular person) are only used automatically when the image looks right *and* the source
+names it; a look-alike can only be used as a labelled illustration. If your model can't read
+images, candidates are judged from metadata only, marked **visually unverified**, and named
+subjects always need your review. See [docs/architecture.md](docs/architecture.md#scene-images).
+
+Every image keeps provider, creator, licence, licence URL, attribution, source page and a
+checksum. Automatic selection only uses documented licences. Images from Brave, a URL, a
+webpage or an upload are marked **rights unknown**; the specialist never places them itself,
+and the renderer only uses them after you choose them. Wide images get a separate render
+version with the whole picture visible instead of being stretched or cropped through the
+subject.
+
+In a project's **Scenes** tab each scene shows its status, brief, the selected image and why,
+how it was verified, rights and attribution, and the alternatives. From there you can search
+again (any source), paste an image URL or webpage, upload a file, use a title card, or remove
+the image; only that scene is re-rendered. FrameFusion has no image generation, so that is not
+offered. Licences come from the source; check them before publishing.
+
+#### Finding images with Google Images (you search, FrameFusion does the rest)
+
+FrameFusion never automates Google. Google's terms forbid automated access that ignores its
+robots.txt, which disallows `/search` and `/imgres`, and the Custom Search JSON API is closed
+to new customers and shuts down on January 1, 2027. So a Google search stays in your own
+browser:
+
+1. In the **Scenes** tab, choose **Google Images** on a scene. FrameFusion opens a Google
+   Images search for the scene's brief in a new tab.
+2. Open a result you like and copy its address. Copying the large image's address also works,
+   and so does any publisher page or image link.
+3. Paste it into the field and press **Search**. FrameFusion reads the Google result link
+   locally (`imgurl`, `imgrefurl`) **without requesting Google**. It then opens the
+   publisher's page through the safe fetcher, looks for the original image on that page and
+   records the publisher, title and any rights the page states: a schema.org `license`,
+   `creditText` or `copyrightNotice`, a `rel="license"` link, or an author or copyright meta
+   tag. Other images on that page are offered as well.
+4. Each candidate is checked against the brief from its metadata, which is free. **Check with
+   vision** starts a background job that makes one paid call to the *Visual specialist* model
+   and looks at up to six images.
+5. **Approve rights and use for scene N** downloads the image safely and validates it.
+   Duplicates are reused. The image is stored with its provenance (found via Google Images,
+   publisher, source page, stated licence, checksum).
+
+Images found this way are always **rights unknown**: Google doesn't grant reuse rights, and a
+licence stated on the page is recorded as "stated by publisher", not verified. They are never
+picked automatically, and they render only after you choose them.
+
+Troubleshooting:
+
+- *"That's Google's preview thumbnail"*: you copied a thumbnail (`encrypted-tbn…gstatic.com` or a
+  `data:` image). Open the result and copy the publisher's page or the full-size image instead.
+- *"That's a Google results page"*: paste a result's own link, not the search page.
+- *"The image wasn't found on the publisher's page"* (tag: *Not seen on the publisher's
+  page*): the page loads its images with JavaScript, the image
+  has moved, or a CDN serves it under another address. The image itself is still validated,
+  but check the page yourself.
+- *"Couldn't open the publisher's page"*: paywalls, logins and bot protection are respected,
+  never bypassed, and no browser cookies are sent. Download the image yourself and use
+  **Upload** instead.
+- *"No suitable image found on that link"*: the page has no usable image (too small, logos
+  only, or no images). Try another result.
 
 **Pexels** (**Settings → Stock media**): default media type, orientation and minimum size for
 stock search and scene images. Results keep the photographer's name and link.
+
+**Pixabay** and **Brave Search** (**Settings → Stock media**): optional keys, tested and stored
+like the others. Brave is a paid API and is used at most once per scene, only after the
+licensed sources had nothing suitable.
 
 When a feature needs a missing integration, the workspace says which one and links to Settings
 instead of failing silently.
@@ -322,8 +398,9 @@ api/
                image search/download endpoints, agent endpoints, legacy import commands
   tools/       Pexels/Wikipedia/weather/time/Pokemon lookups and render tools (as jobs)
   engine/      orchestrator/ (personalities, chat, specialists, persisted production run,
-               registry), services/images/ (safe fetch, Pexels/Openverse/URL/webpage sources,
-               image toolkit), timeline renderer, QC, narration (Edge TTS or ElevenLabs);
+               registry), services/images/ (visual briefs, safe fetch, Pexels/Pixabay/
+               Wikimedia/Openverse/Brave/URL/webpage sources, vision relevance checks, image
+               toolkit, render variants), timeline renderer, QC, narration (Edge TTS or ElevenLabs);
                reads keys and defaults through engine/integrations.py
   tests/       pytest suite with mocked providers
 web/
@@ -384,7 +461,7 @@ All endpoints are under `/api`. `GET /api/app` sets the CSRF cookie; unsafe meth
 | Narration | `GET/PUT settings/narration`, `GET settings/narration/edge/voices?refresh=1`, `POST narration/preview` (job; ElevenLabs uses credits), `GET narration/previews/<job>` |
 | Import choices | `GET settings/import-conflicts`, `POST settings/import-conflicts/<id>` |
 | Projects | `GET/POST projects`, `GET/PATCH/DELETE projects/<id>` (PATCH accepts `title` and `personality`), `POST projects/<id>/messages` (job), `POST projects/<id>/production` (job), `POST projects/<id>/production/rerun` (job, optional `from_stage`), `POST projects/import-legacy` |
-| Scene images | `POST projects/<id>/images/search`, `POST projects/<id>/images/download` (by `candidate_id`, optional `scene_index`), `PUT projects/<id>/scenes/<n>/image` (`asset_id` or `null`) |
+| Scene images | `POST projects/<id>/images/search` (`source`: `auto`, `pexels`, `pixabay`, `wikimedia`, `openverse`, `brave`, `url`, `webpage`, `link` for a pasted Google Images result, page or image link; optional `scene_index` adds a metadata assessment), `POST projects/<id>/images/check` (job: vision check of up to six `candidate_ids` for a `scene_index`; one paid model call), `POST projects/<id>/images/download` (by `candidate_id`, optional `scene_index`, `illustrative`), `POST projects/<id>/images/upload` (multipart `file`, `scene_index`), `PUT projects/<id>/scenes/<n>/image` (`asset_id`, `null`, or `title_card: true`) |
 | Jobs | `GET jobs`, `GET jobs/<id>?after=`, `POST jobs/<id>/cancel`, `POST jobs/<id>/retry`, `POST jobs/<id>/retry-narration` (optional `provider`) |
 | Agents | `GET agents/registry`, `GET agents/status`, `POST agents/<slug>` (job) |
 | Media | `GET media`, `DELETE media/<id>`, `GET media/<id>/file` (supports `Range`) |
@@ -392,7 +469,8 @@ All endpoints are under `/api`. `GET /api/app` sets the CSRF cookie; unsafe meth
 | Render tools (jobs) | `POST shorts/generate-text-video`, `POST shorts/generate-sound-video`, `POST shorts/generate-audio-video`, `POST lofi/generate-video`, `POST video-producer/text-short`, `POST video-producer/sound-short` |
 | Legacy | `GET chat/health`, `GET chat/videos`, `GET chat/videos/<file>`, `GET chat/audio/<file>` |
 
-`<service>` is one of `openrouter`, `gemini`, `anthropic`, `elevenlabs`, `pexels`.
+`<service>` is one of `openrouter`, `gemini`, `anthropic`, `elevenlabs`, `pexels`, `pixabay`,
+`brave`.
 
 ## Known limitations
 
@@ -406,10 +484,18 @@ All endpoints are under `/api`. `GET /api/app` sets the CSRF cookie; unsafe meth
 - Free narration needs an internet connection and depends on Microsoft's unofficial Edge
   read-aloud service, which can change or stop working without notice (see Narration).
 - The old YouTube and lofi file-path endpoints were removed; `lofi/generate-video` takes uploads.
-- Openverse and Pexels have rate limits; when they are hit, scenes are reported as gaps rather
-  than filled with something else. Licence metadata comes from the source and is not verified.
-- When the visual specialist's model doesn't assign an image, a deterministic fallback takes the
-  top documented-licence search result, which may be a weak match. Replace it in the Scenes tab.
+- Image sources have rate limits; when they are hit, scenes are reported as gaps rather than
+  filled with something else. Licence metadata comes from the source and is not verified.
+- Relevance checks are only as good as the *Visual specialist* model. Without a vision-capable
+  model, images are judged from their metadata, marked visually unverified, and named subjects
+  always need your review. Even with vision, a model can't guarantee that a photo shows one
+  specific person or place; the relevance score is a heuristic, not a probability.
+- Niche subjects often have no licensed image at all. Expect *No suitable image* scenes and use
+  upload, a URL or a title card for them.
+- There is no image-generation integration.
+- Google Images is never automated or scraped: you search in your own browser and paste a
+  result. Pasted links don't always lead to a usable original (JavaScript-only pages, paywalls,
+  hotlink protection), and their rights always need your review.
 - The production music bed is procedural. ElevenLabs music is only used when you ask the music
   specialist for a standalone track.
 

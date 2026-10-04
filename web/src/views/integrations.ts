@@ -1485,6 +1485,56 @@ export function pexelsPanel(configured: boolean): HTMLElement {
   return root
 }
 
+// --- Other image sources ------------------------------------------------------------------
+
+/** What an optional image source adds, its licence and its cost. Keys are saved in the card above. */
+export function imageSourcePanel(service: 'pixabay' | 'brave'): HTMLElement {
+  if (service === 'pixabay') {
+    return h(
+      'div',
+      { class: 'media-settings media-settings-pixabay' },
+      h(
+        'p',
+        { class: 'field-hint' },
+        'Optional. Adds free stock photos, illustrations and vector graphics to scene image searches. The free API allows 100 searches a minute; FrameFusion caches results for 24 hours as Pixabay requires and downloads images into your project instead of hotlinking them.',
+      ),
+      h(
+        'div',
+        { class: 'notice notice-info' },
+        icon('check', 16),
+        h(
+          'p',
+          null,
+          'Pixabay content is free to use without attribution, but not for selling unaltered copies or implying endorsement by people or brands shown. FrameFusion still records the creator and source page. ',
+          externalLink('https://pixabay.com/service/license-summary/', 'Pixabay Content License'),
+          ' · ',
+          externalLink('https://pixabay.com/api/docs/', 'Get a free API key'),
+        ),
+      ),
+    )
+  }
+  return h(
+    'div',
+    { class: 'media-settings media-settings-brave' },
+    h(
+      'p',
+      { class: 'field-hint' },
+      'Optional, for discovery only. Brave image search finds pictures across the web when the licensed sources have nothing suitable. The visual specialist uses it at most once per scene, and only after the licensed sources failed.',
+    ),
+    h(
+      'div',
+      { class: 'notice notice-warn' },
+      icon('alert', 16),
+      h(
+        'p',
+        null,
+        'Each search uses paid Brave Search API credits. Results come from third-party websites with unknown reuse rights, so they are never placed in a video automatically: you review each one and choose it yourself. ',
+        externalLink('https://api-dashboard.search.brave.com/', 'Brave Search API'),
+      ),
+    ),
+  )
+}
+
 // --- Imported settings --------------------------------------------------------------------
 
 export function importChoicesPanel(): HTMLElement {

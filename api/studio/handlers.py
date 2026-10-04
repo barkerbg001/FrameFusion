@@ -14,6 +14,7 @@ from engine.paths import GENERATED_DIR
 from engine.runtime import report
 from engine.services import narration
 
+from . import images
 from .agent_specs import AGENT_SPECS, run_spec
 from .jobs import job_personality, register
 from .media import asset_payload, register_from_result
@@ -204,6 +205,13 @@ def handle_narration(job: GenerationJob) -> dict[str, Any]:
     if mode == "retry_render":
         return _narration_retry(job)
     raise ValueError(f"Unknown narration job '{mode}'.")
+
+
+@register("image_check")
+def handle_image_check(job: GenerationJob) -> dict[str, Any]:
+    if job.project is None:
+        raise ValueError("Image checks need a project.")
+    return images.run_check(job.project, job.input or {})
 
 
 @register("agent")

@@ -11,6 +11,8 @@ urlpatterns = [
     path("projects/<uuid:project_id>/production/rerun", views.ProjectRerunView.as_view()),
     path("projects/<uuid:project_id>/images/search", views.ProjectImageSearchView.as_view()),
     path("projects/<uuid:project_id>/images/download", views.ProjectImageDownloadView.as_view()),
+    path("projects/<uuid:project_id>/images/upload", views.ProjectImageUploadView.as_view()),
+    path("projects/<uuid:project_id>/images/check", views.ProjectImageCheckView.as_view()),
     path(
         "projects/<uuid:project_id>/scenes/<int:scene_index>/image",
         views.ProjectSceneImageView.as_view(),

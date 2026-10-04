@@ -39,6 +39,7 @@ from engine.orchestrator.store import ProjectStore
 from engine.runtime import RunCancelled, check_cancelled, report
 from engine.services import narration as narration_service
 from engine.services.images.candidates import safe_slug
+from engine.services.images.variants import render_variant
 from engine.services.procedural_music import generate_procedural_music
 from engine.services.text_video_creator import timed_screen_durations
 from engine.services.timeline import TimelineScene, check_video, render_timeline
@@ -319,19 +320,20 @@ class Production:
             result = specialists.run_visuals(
                 script, brief, self.store, user_urls=self.request.user_urls, previous=previous
             )
-            if not result.scene_assets:
+            searches = [search for state in result.scenes for search in state.searches]
+            if not result.scene_assets and searches and all(s.get("error") for s in searches):
                 raise ProductionStageError(
-                    "No usable images were found for any scene. "
-                    + (
-                        " ".join(result.limitations[:2])
-                        or "Try rewording the brief or add images yourself."
-                    ),
+                    "No image source could be reached. "
+                    + (" ".join(result.limitations[:2]) or "Check your connection and try again."),
                     stage="visuals",
                     kind="no_images",
                 )
             limitations = list(result.limitations)
             limitations += [
-                f"Scene {gap.scene_index + 1} has no image: {gap.reason}" for gap in result.gaps
+                f"Scene {gap.scene_index + 1} has no suitable image: {gap.reason}"
+                for gap in result.gaps
+                if (state := result.scene_state(gap.scene_index)) is None
+                or state.status != "title_card"
             ]
             return StageResult(
                 result.model_dump(),
@@ -443,9 +445,22 @@ class Production:
 
         def work() -> StageResult:
             timeline = []
+            needs_rights_review: list[int] = []
             for scene, duration in zip(script.scenes, durations, strict=True):
                 chosen = visuals.asset_for(scene.index)
-                path = self.store.asset_path(chosen.asset_id) if chosen else None
+                path = None
+                if chosen is not None:
+                    record = self.store.asset(chosen.asset_id) or {}
+                    approved = (
+                        record.get("rights_status") == "documented"
+                        or record.get("user_supplied")
+                        or chosen.selected_by == "user"
+                    )
+                    if approved:
+                        original = self.store.asset_path(chosen.asset_id)
+                        path = render_variant(original) if original else None
+                    else:
+                        needs_rights_review.append(scene.index)
                 timeline.append(
                     TimelineScene(
                         duration=duration,
@@ -476,12 +491,17 @@ class Production:
             )
             limitations = (
                 [
-                    "Placeholder cards were used for scenes "
+                    "Title cards were used for scenes without a suitable image: "
                     + ", ".join(str(i + 1) for i in outcome.placeholder_scenes)
                 ]
                 if outcome.placeholder_scenes
                 else []
             )
+            if needs_rights_review:
+                limitations.append(
+                    "Images with unknown reuse rights were left out until you approve them "
+                    "(scenes " + ", ".join(str(i + 1) for i in needs_rights_review) + ")."
+                )
             return StageResult(
                 artifact.model_dump(), artifact_ids=[asset["id"]], limitations=limitations
             )
@@ -678,6 +698,17 @@ class Production:
                 + (f" ({', '.join(sources)})" if sources else "")
                 + ". Credits and licences are in the Scenes tab."
             )
+            unresolved = [
+                state.scene_index + 1
+                for state in visuals.scenes
+                if state.status in ("awaiting_review", "no_suitable_result", "download_failed")
+            ]
+            if unresolved:
+                lines.append(
+                    "No suitable image yet for scene(s) "
+                    + ", ".join(str(n) for n in unresolved)
+                    + ": they use title cards until you choose, upload or paste one."
+                )
         if narration:
             voice = narration_service.PROVIDER_LABELS.get(narration.provider, narration.provider)
             lines.append(f"Narration: {voice}, {narration.duration_seconds:.0f}s.")

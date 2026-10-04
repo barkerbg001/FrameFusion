@@ -153,17 +153,57 @@ class ScriptArtifact(BaseModel):
         return " ".join(scene.narration.strip() for scene in self.scenes)
 
 
+SceneVisualStatus = Literal[
+    "searching",
+    "candidates_found",
+    "awaiting_review",
+    "selected",
+    "no_suitable_result",
+    "download_failed",
+    "title_card",
+]
+# What the user can do next for an unresolved scene (shown as actions in the Scenes tab).
+GapAction = Literal[
+    "search_other_source",
+    "refine_brief",
+    "upload",
+    "paste_url",
+    "choose_illustrative",
+    "title_card",
+]
+
+
 class SceneAsset(BaseModel):
     scene_index: int = Field(ge=0)
     asset_id: str
     candidate_id: str = ""
     reason: str = ""
+    # "auto" only appears in projects produced before relevance checks existed.
     selected_by: Literal["visual", "auto", "user"] = "visual"
+    verification: Literal["vision", "metadata", "user", "none"] = "none"
+    rights_status: Literal["documented", "unknown"] = "documented"
+    illustrative: bool = False
 
 
 class SceneGap(BaseModel):
     scene_index: int
     reason: str
+    missing: str = ""
+    actions: list[GapAction] = Field(default_factory=list)
+
+
+class SceneVisual(BaseModel):
+    """Per-scene search record: brief, searches, assessed alternatives and outcome."""
+
+    scene_index: int = Field(ge=0)
+    status: SceneVisualStatus = "searching"
+    brief: dict[str, Any] = Field(default_factory=dict)
+    searches: list[dict[str, Any]] = Field(default_factory=list)
+    # Browser-safe candidate summaries with their assessment; ``candidate`` holds the full
+    # server-side record so the user can download by candidate_id later.
+    alternatives: list[dict[str, Any]] = Field(default_factory=list)
+    assessment: dict[str, Any] | None = None
+    note: str = ""
 
 
 class VisualResult(BaseModel):
@@ -171,9 +211,13 @@ class VisualResult(BaseModel):
     gaps: list[SceneGap] = Field(default_factory=list)
     limitations: list[str] = Field(default_factory=list)
     notes: str = ""
+    scenes: list[SceneVisual] = Field(default_factory=list)
 
     def asset_for(self, scene_index: int) -> SceneAsset | None:
         return next((item for item in self.scene_assets if item.scene_index == scene_index), None)
+
+    def scene_state(self, scene_index: int) -> SceneVisual | None:
+        return next((item for item in self.scenes if item.scene_index == scene_index), None)
 
 
 class NarrationArtifact(BaseModel):

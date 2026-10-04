@@ -11,12 +11,17 @@ from typing import Literal
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, Field
 
-Provider = Literal["pexels", "openverse", "url", "webpage"]
+Provider = Literal[
+    "pexels", "pixabay", "wikimedia", "openverse", "brave", "url", "webpage", "upload"
+]
 RightsStatus = Literal["documented", "unknown"]
 
 MAX_IMAGE_BYTES = 15 * 1024 * 1024
+MAX_PREVIEW_BYTES = 4 * 1024 * 1024
 MAX_IMAGE_PIXELS = 50_000_000
 MIN_SHORT_SIDE = 320
+MIN_PREVIEW_SIDE = 64
+PREVIEW_LONG_SIDE = 768
 MAX_SIDE = 12_000
 
 UNKNOWN_RIGHTS_NOTE = (
@@ -45,6 +50,16 @@ class ImageCandidate(BaseModel):
     usage_note: str = UNKNOWN_RIGHTS_NOTE
     user_supplied: bool = False
     tags: list[str] = Field(default_factory=list)
+    description: str = ""
+    # Where the user found it (e.g. "google_images"); a discovery hint, never a permission.
+    discovered_via: str | None = None
+    publisher: str | None = None
+    # True when the image was seen on its publisher's page, False when it was not found there.
+    found_on_page: bool | None = None
+
+    @property
+    def metadata_text(self) -> str:
+        return " ".join([self.title, self.description, " ".join(self.tags)])
 
     @property
     def orientation(self) -> str | None:
@@ -70,6 +85,23 @@ class ImageCandidate(BaseModel):
             "license": self.license,
             "rights_status": self.rights_status,
             "source_page_url": self.source_page_url,
+            "description": clean_text(self.description, 200) or None,
+            "tags": [clean_text(tag, 40) for tag in self.tags[:8]],
+            "discovered_via": self.discovered_via,
+            "publisher": clean_text(self.publisher or "", 120) or None,
+            "found_on_page": self.found_on_page,
+        }
+
+    def public(self) -> dict[str, object]:
+        """Browser-safe view: everything except the download URL the server fetches."""
+        return {
+            **self.summary(),
+            "preview_url": self.preview_url,
+            "creator_url": self.creator_url,
+            "license_url": self.license_url,
+            "attribution": self.attribution,
+            "usage_note": self.usage_note,
+            "user_supplied": self.user_supplied,
         }
 
 
@@ -164,6 +196,67 @@ def validate_image(data: bytes) -> ValidatedImage:
         width=width,
         height=height,
     )
+
+
+@dataclass
+class PreviewImage:
+    data: bytes
+    mime: str
+    width: int
+    height: int
+
+
+def validate_preview(data: bytes) -> PreviewImage:
+    """Decode a (possibly small) preview and re-encode it as a bounded JPEG for vision checks."""
+    if not data or len(data) > MAX_PREVIEW_BYTES:
+        raise InvalidImage("The preview is empty or too large.")
+    if sniff_format(data) is None:
+        raise InvalidImage("The preview is not a JPEG, PNG or WebP image.")
+    try:
+        with Image.open(io.BytesIO(data), formats=PILLOW_FORMATS) as source:
+            if source.width * source.height > MAX_IMAGE_PIXELS:
+                raise InvalidImage("The preview has too many pixels.")
+            frame = source.convert("RGB")
+    except InvalidImage:
+        raise
+    except (
+        UnidentifiedImageError,
+        OSError,
+        SyntaxError,
+        ValueError,
+        Image.DecompressionBombError,
+    ) as exc:
+        raise InvalidImage("The preview is damaged or could not be decoded.") from exc
+    if min(frame.size) < MIN_PREVIEW_SIDE:
+        raise InvalidImage("The preview is too small to judge.")
+    frame.thumbnail((PREVIEW_LONG_SIDE, PREVIEW_LONG_SIDE), Image.Resampling.LANCZOS)
+    buffer = io.BytesIO()
+    frame.save(buffer, format="JPEG", quality=82)
+    return PreviewImage(buffer.getvalue(), "image/jpeg", frame.width, frame.height)
+
+
+def difference_hash(data: bytes) -> str:
+    """64-bit dHash as 16 hex characters; near-identical images differ in only a few bits."""
+    with Image.open(io.BytesIO(data), formats=PILLOW_FORMATS) as source:
+        small = source.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
+    pixels = list(small.getdata())
+    bits = 0
+    for row in range(8):
+        for column in range(8):
+            left = pixels[row * 9 + column]
+            right = pixels[row * 9 + column + 1]
+            bits = (bits << 1) | (1 if left > right else 0)
+    return f"{bits:016x}"
+
+
+NEAR_DUPLICATE_BITS = 6
+
+
+def hash_distance(first: str, second: str) -> int:
+    try:
+        return bin(int(first, 16) ^ int(second, 16)).count("1")
+    except ValueError:
+        return 64
 
 
 def vertical_fit(width: int, height: int) -> str:

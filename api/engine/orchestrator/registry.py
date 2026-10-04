@@ -30,15 +30,20 @@ SPECIALISTS: list[dict[str, Any]] = [
     {
         "id": "visual",
         "name": "Visual specialist",
-        "role": "Searches, inspects and downloads one real image per scene and records licences.",
+        "role": (
+            "Writes a visual brief per scene, searches licensed sources, checks candidates "
+            "against the brief and downloads only images that match, or reports an honest gap."
+        ),
         "tools": [
-            "search_images",
-            "inspect_image_candidate",
-            "download_image",
-            "assign_scene_image",
+            "build_visual_brief",
+            "search_image_sources",
+            "inspect_image_candidates",
+            "rank_image_candidates",
+            "download_and_register_image",
             "list_project_assets",
+            "report_visual_gap",
         ],
-        "produces": "Scene-to-image map with gaps",
+        "produces": "Scene-to-image map with briefs, assessed alternatives and gaps",
     },
     {
         "id": "ideas",

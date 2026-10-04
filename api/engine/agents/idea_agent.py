@@ -10,9 +10,9 @@ from engine.agents.base import (
     reset_tool_results,
     search_pexels_tool,
 )
-from engine.agents.response_schema import response_schema
+from engine.agents.response_schema import generate_validated
 from engine.llm import types
-from engine.schemas.idea import IdeaReport
+from engine.schemas.idea import IdeaDraft, IdeaReport
 
 
 class IdeaAgentError(Exception):
@@ -101,40 +101,32 @@ in limitations when relevant.
         )
         tools_used = get_tools_used()
         format_prompt = f"""
-Convert the brainstorming notes below into the required response schema.
+Convert the brainstorming notes below into the required JSON object.
 
 Topic: {normalized_topic}
-Generated at UTC: {generated_at}
-Tools used: {", ".join(tools_used) if tools_used else "none"}
 Brainstorming notes:
 {brainstorm.text}
 
 Requirements:
-- Set topic to the requested topic text.
+- summary: one or two sentences describing the set of ideas.
 - Return exactly {idea_count} ideas unless fewer strong distinct ideas exist.
-- research_task on each idea must be a complete instruction for the researcher
-  or Framey (director pipeline).
-- suggested_format must be auto, sound, or silent.
-- List each tool name once in tools_used.
+- research_task on each idea must be a complete instruction the orchestrator can act on.
+- suggested_format must be one of: auto, narrated, silent, text_short, sound_short.
 - Explain speculative or unverified angles in limitations.
 """
-        response = client.models.generate_content(
-            model=model,
-            contents=format_prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=response_schema(IdeaReport),
-                temperature=0,
-            ),
+        draft = generate_validated(
+            client, format_prompt, IdeaDraft, temperature=0, model_name=model
         )
-        report = IdeaReport.model_validate_json(response.text)
-        report.topic = normalized_topic
-        report.generated_at = generated_at
-        report.tools_used = tools_used
-        if not report.limitations:
-            report.limitations = [
-                "Ideas are creative starting points and should be verified during research."
-            ]
+        report = IdeaReport(
+            topic=normalized_topic,
+            generated_at=generated_at,
+            summary=draft.summary
+            or f"{len(draft.ideas)} short-video ideas about {normalized_topic}.",
+            ideas=draft.ideas,
+            tools_used=tools_used,
+            limitations=draft.limitations
+            or ["Ideas are creative starting points and should be verified during research."],
+        )
         return report.model_dump()
     except IdeaAgentError:
         raise

@@ -114,7 +114,45 @@ def production_state(project: Project) -> dict[str, Any]:
     scenes = (script.output or {}).get("scenes", []) if script and script.output else []
     visual_output = (visuals.output or {}) if visuals and visuals.output else {}
     by_scene = {item["scene_index"]: item for item in visual_output.get("scene_assets", []) or []}
-    gaps = {gap["scene_index"]: gap["reason"] for gap in visual_output.get("gaps", []) or []}
+    gap_items = {gap["scene_index"]: gap for gap in visual_output.get("gaps", []) or []}
+    gaps = {index: gap["reason"] for index, gap in gap_items.items()}
+    states = {item["scene_index"]: item for item in visual_output.get("scenes", []) or []}
+    searching = bool(visuals and visuals.status == ProductionTask.Status.ACTIVE)
+
+    def visual_state(position: int) -> dict[str, Any]:
+        state = states.get(position) or {}
+        chosen = by_scene.get(position) or {}
+        gap = gap_items.get(position) or {}
+        if searching:
+            status = "searching"
+        elif state.get("status"):
+            status = state["status"]
+        elif chosen:
+            status = "selected"
+        elif gap:
+            status = "no_suitable_result"
+        else:
+            status = None
+        return {
+            "status": status,
+            "brief": state.get("brief") or None,
+            "searches": [
+                {key: item.get(key) for key in ("query", "source", "count", "error", "rationale")}
+                for item in state.get("searches") or []
+            ],
+            "alternatives": [
+                {key: value for key, value in item.items() if key != "candidate"}
+                for item in state.get("alternatives") or []
+            ],
+            "assessment": state.get("assessment"),
+            "note": state.get("note") or "",
+            "verification": chosen.get("verification"),
+            "rights_status": chosen.get("rights_status"),
+            "illustrative": bool(chosen.get("illustrative")),
+            "missing": gap.get("missing") or "",
+            "actions": gap.get("actions") or [],
+        }
+
     return {
         "tasks": [task_payload(latest[stage]) for stage in STAGES if stage in latest],
         "scenes": [
@@ -128,6 +166,7 @@ def production_state(project: Project) -> dict[str, Any]:
                 "selected_by": (by_scene.get(position) or {}).get("selected_by"),
                 "reason": (by_scene.get(position) or {}).get("reason"),
                 "gap": gaps.get(position),
+                "visual": visual_state(position),
             }
             for position, scene in enumerate(scenes)
         ],

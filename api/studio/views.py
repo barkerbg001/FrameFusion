@@ -20,6 +20,7 @@ from engine.orchestrator.registry import list_agents
 from engine.orchestrator.schemas import Stage
 from engine.services import narration
 from engine.services.images.toolkit import ImageToolError
+from engine.services.images.variants import VARIANT_SUFFIX
 from providers.services import readiness
 
 from . import images, jobs, legacy
@@ -101,19 +102,30 @@ class ProductionRerun(BaseModel):
 
 
 class ImageSearch(BaseModel):
-    query: str = Field(min_length=2, max_length=2000)
-    source: Literal["auto", "pexels", "openverse", "url", "webpage"] = "auto"
+    query: str = Field(min_length=2, max_length=4000)
+    # "link" resolves a link you pasted (e.g. a Google Images result) without fetching Google.
+    source: Literal[
+        "auto", "pexels", "pixabay", "wikimedia", "openverse", "brave", "url", "webpage", "link"
+    ] = "auto"
     orientation: Literal["portrait", "landscape", "square", "any"] = "portrait"
     limit: int = Field(default=12, ge=1, le=20)
+    scene_index: int | None = Field(default=None, ge=0, le=20)
+
+
+class ImageCheck(BaseModel):
+    scene_index: int = Field(ge=0, le=20)
+    candidate_ids: list[str] = Field(min_length=1, max_length=6)
 
 
 class ImageDownload(BaseModel):
     candidate_id: str = Field(min_length=3, max_length=200)
     scene_index: int | None = Field(default=None, ge=0, le=20)
+    illustrative: bool = False
 
 
 class SceneImage(BaseModel):
     asset_id: uuid.UUID | None = None
+    title_card: bool = False
 
 
 ALL_ROUTES: tuple[Route, ...] = tuple(ROUTE_LABELS)
@@ -391,18 +403,41 @@ def _image_error(exc: ImageToolError) -> ApiError:
 
 
 class ProjectImageSearchView(APIView):
-    """Search Pexels, Openverse, a direct image URL or a public web page. Free; no model."""
+    """Search the image sources, a direct image URL or a public web page. No model is used."""
 
     def post(self, request: Request, project_id: uuid.UUID) -> Response:
         project = get_project(project_id)
         body = validate(ImageSearch, request.data)
         try:
             result = images.search(
-                project, body.query.strip(), body.source, body.orientation, body.limit
+                project,
+                body.query.strip(),
+                body.source,
+                body.orientation,
+                body.limit,
+                body.scene_index,
             )
         except ImageToolError as exc:
             raise _image_error(exc) from exc
         return Response(result)
+
+
+class ProjectImageCheckView(APIView):
+    """Check search results against a scene's brief with the Visual specialist model (job)."""
+
+    def post(self, request: Request, project_id: uuid.UUID) -> Response:
+        project = get_project(project_id)
+        body = validate(ImageCheck, request.data)
+        require_ready(("production",))
+        try:
+            payload = images.check_input(project, body.scene_index, body.candidate_ids)
+        except ValueError as exc:
+            raise ApiError(str(exc), status_code=409, code="bad_request") from exc
+        job = GenerationJob.objects.create(
+            project=project, kind=GenerationJob.Kind.IMAGE_CHECK, agent="visual", input=payload
+        )
+        job = jobs.submit(job)
+        return Response(job_payload(job, events_after=0), status=status.HTTP_202_ACCEPTED)
 
 
 class ProjectImageDownloadView(APIView):
@@ -412,7 +447,42 @@ class ProjectImageDownloadView(APIView):
         if body.scene_index is not None:
             _require_idle(project)
         try:
-            saved, visuals = images.download(project, body.candidate_id, body.scene_index)
+            saved, visuals = images.download(
+                project, body.candidate_id, body.scene_index, illustrative=body.illustrative
+            )
+        except ImageToolError as exc:
+            raise _image_error(exc) from exc
+        except ValueError as exc:
+            raise ApiError(str(exc), status_code=409, code="bad_request") from exc
+        asset = MediaAsset.objects.get(pk=saved["asset_id"])
+        return Response(
+            {
+                "asset": asset_payload(asset),
+                "reused_existing_file": saved["reused_existing_file"],
+                "production": production_state(project) if visuals is not None else None,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ProjectImageUploadView(APIView):
+    """Add an image file from the user's computer, optionally assigning it to a scene."""
+
+    def post(self, request: Request, project_id: uuid.UUID) -> Response:
+        project = get_project(project_id)
+        upload = request.FILES.get("file")
+        if upload is None:
+            raise ApiError("Choose an image file to upload.", code="bad_request")
+        raw_scene = request.data.get("scene_index")
+        scene_index: int | None = None
+        if raw_scene not in (None, ""):
+            try:
+                scene_index = int(raw_scene)
+            except (TypeError, ValueError) as exc:
+                raise ApiError("scene_index must be a number.", code="bad_request") from exc
+            _require_idle(project)
+        try:
+            saved, visuals = images.upload(project, upload, scene_index)
         except ImageToolError as exc:
             raise _image_error(exc) from exc
         except ValueError as exc:
@@ -429,12 +499,19 @@ class ProjectImageDownloadView(APIView):
 
 
 class ProjectSceneImageView(APIView):
-    """Point a scene at another project image, or clear it with ``asset_id: null``."""
+    """Point a scene at another project image, clear it (``asset_id: null``), or choose a
+    title card (``title_card: true``)."""
 
     def put(self, request: Request, project_id: uuid.UUID, scene_index: int) -> Response:
         project = get_project(project_id)
         body = validate(SceneImage, request.data or {})
         _require_idle(project)
+        if body.title_card:
+            try:
+                replace_scene_asset(project, scene_index, None, title_card=True)
+            except ValueError as exc:
+                raise ApiError(str(exc), status_code=409, code="bad_request") from exc
+            return Response(production_state(project))
         asset = None
         if body.asset_id is not None:
             asset = MediaAsset.objects.filter(
@@ -734,6 +811,7 @@ class MediaDetailView(APIView):
         asset.delete()
         if path is not None:
             path.unlink(missing_ok=True)
+            path.with_name(path.stem + VARIANT_SUFFIX).unlink(missing_ok=True)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

@@ -6,6 +6,11 @@ ElevenLabs docs: https://elevenlabs.io/docs/api-reference/introduction
   Voices: GET /v2/voices   Models: GET /v1/models   Speech (uses credits): POST /v1/text-to-speech
 Pexels docs: https://www.pexels.com/api/documentation/
   Key check: GET /v1/curated?per_page=1 (counts against the 200/hour, 20,000/month quota)
+Pixabay docs: https://pixabay.com/api/docs/
+  Key check: GET /api/?key=…&q=mountain (100 requests per minute; the key is a query parameter
+  by design, so URLs are never logged or echoed)
+Brave Search docs: https://api-dashboard.search.brave.com/app/documentation/image-search
+  Key check: GET /res/v1/images/search?q=lighthouse&count=1 (billed as one request)
 """
 
 from __future__ import annotations
@@ -21,6 +26,8 @@ from .base import ConnectionResult, ProviderInfo, friendly_message, kind_for_sta
 
 ELEVENLABS_URL = "https://api.elevenlabs.io"
 PEXELS_URL = "https://api.pexels.com"
+PIXABAY_URL = "https://pixabay.com"
+BRAVE_URL = "https://api.search.brave.com"
 
 PREVIEW_MAX_CHARS = 300
 
@@ -277,7 +284,81 @@ class PexelsClient(MediaServiceClient):
         return ConnectionResult(True, message, None, details)
 
 
+class PixabayClient(MediaServiceClient):
+    info = ProviderInfo(
+        name="pixabay",
+        label="Pixabay",
+        key_url="https://pixabay.com/api/docs/",
+        docs_url="https://pixabay.com/api/docs/",
+        key_prefix_hint="digits-hex, e.g. 1234567-abc…",
+        test_billing_note=(
+            "Pixabay is free. Testing makes one search, which counts toward the limit of "
+            "100 requests per minute. Results are cached for 24 hours as Pixabay requires."
+        ),
+        capabilities={"photos": True, "illustrations": True},
+    )
+    base_url = PIXABAY_URL
+
+    def _headers(self) -> dict[str, str]:
+        return {"Accept": "application/json"}
+
+    def _error(self, response: httpx.Response) -> LLMError:
+        # Pixabay answers a bad key with 400 and a plain-text message.
+        if response.status_code in (400, 401, 403) and "key" in response.text.lower():
+            return LLMError(
+                friendly_message("invalid_credentials", self.label, "The API key was rejected."),
+                kind="invalid_credentials",
+                provider=self.info.name,
+                status_code=response.status_code,
+            )
+        return super()._error(response)
+
+    def test_connection(self) -> ConnectionResult:
+        try:
+            response = self._request(
+                "GET", "/api/", params={"key": self._api_key, "q": "mountain", "per_page": 3}
+            )
+        except LLMError as exc:
+            return ConnectionResult(False, exc.message, exc.kind)
+        message = "Connected to Pixabay. The key is valid."
+        remaining = response.headers.get("X-RateLimit-Remaining")
+        details: dict[str, Any] = {}
+        if remaining and remaining.isdigit():
+            details = {"remaining": int(remaining)}
+            message += f" {int(remaining)} requests left this minute."
+        return ConnectionResult(True, message, None, details)
+
+
+class BraveSearchClient(MediaServiceClient):
+    info = ProviderInfo(
+        name="brave",
+        label="Brave Search",
+        key_url="https://api-dashboard.search.brave.com/app/keys",
+        docs_url="https://api-dashboard.search.brave.com/app/documentation/image-search",
+        key_prefix_hint="BSA…",
+        test_billing_note=(
+            "Brave Search is a paid API (with a monthly free credit). Testing makes one image "
+            "search, which is billed as one request. Image search results are for discovery "
+            "only: their reuse rights are unknown and you review them before use."
+        ),
+        capabilities={"image_search": True},
+    )
+    base_url = BRAVE_URL
+
+    def _headers(self) -> dict[str, str]:
+        return {"X-Subscription-Token": self._api_key, "Accept": "application/json"}
+
+    def test_connection(self) -> ConnectionResult:
+        try:
+            self._request("GET", "/res/v1/images/search", params={"q": "lighthouse", "count": 1})
+        except LLMError as exc:
+            return ConnectionResult(False, exc.message, exc.kind)
+        return ConnectionResult(True, "Connected to Brave Search. The key is valid.", None, {})
+
+
 MEDIA_CLIENTS: dict[str, type[MediaServiceClient]] = {
     "elevenlabs": ElevenLabsClient,
     "pexels": PexelsClient,
+    "pixabay": PixabayClient,
+    "brave": BraveSearchClient,
 }

@@ -57,6 +57,7 @@ class Studio:
     narration_error: Exception | None = None
     visuals_error: BaseException | None = None
     qc_passes: bool = True
+    rights: str = "documented"
     events: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
 
     def count(self, name: str) -> None:
@@ -113,8 +114,8 @@ def studio(monkeypatch: pytest.MonkeyPatch, output_dir: Path) -> Studio:
                 provider="openverse",
                 title=f"Pool {scene.index}",
                 download_url=f"https://upload.example/{scene.index}.jpg",
-                license="CC0",
-                rights_status="documented",
+                license="CC0" if state.rights == "documented" else "unknown",
+                rights_status=state.rights,  # type: ignore[arg-type]
             )
             image = validate_image(_jpeg(["teal", "navy", "olive"][scene.index % 3]))
             saved = store.save_image(image, candidate, scene_index=scene.index)
@@ -242,7 +243,23 @@ def test_replacing_a_scene_image_invalidates_render_only(studio: Studio) -> None
     changed = {k for k, v in studio.calls.items() if v != before.get(k)}
     assert changed == {"render", "qc"}
     assert result["render"]["placeholder_scenes"] == [1]
-    assert any("Placeholder" in item for item in result["limitations"])
+    assert any("Title cards" in item for item in result["limitations"])
+
+
+def test_unknown_rights_images_wait_for_approval_before_rendering(studio: Studio) -> None:
+    project = Project.objects.create()
+    studio.rights = "unknown"
+    result = _run(studio, project)
+    assert result["render"]["placeholder_scenes"] == [0, 1, 2]
+    assert any("unknown reuse rights" in item for item in result["limitations"])
+
+    approved = VisualResult.model_validate(
+        ProductionTask.objects.filter(project=project, stage="visuals").latest("created_at").output
+    ).asset_for(1)
+    assert approved is not None
+    replace_scene_asset(project, 1, MediaAsset.objects.get(pk=approved.asset_id))
+    again = _run(studio, project)
+    assert again["render"]["placeholder_scenes"] == [0, 2]
 
 
 def test_cancel_marks_the_active_task_cancelled(studio: Studio) -> None:
@@ -380,6 +397,26 @@ def test_orchestrator_tools_limit_productions_and_reuse_the_plan(
     second = json.loads(tools["produce_video"]("another one"))
     assert "Only one production" in second["error"]
     assert len(seen) == 1
+
+
+def test_a_failed_plan_can_be_retried_in_the_same_reply(monkeypatch: pytest.MonkeyPatch) -> None:
+    store = DjangoProjectStore(Project.objects.create())
+    attempts: list[str | None] = []
+
+    def fake_run(store: Any, request: ProductionRequest, personality: str) -> dict[str, Any]:
+        attempts.append(request.stop_after)
+        if len(attempts) == 1:
+            raise RuntimeError("Research failed")
+        return {"summary": "planned", "brief": {}, "script": None, "limitations": []}
+
+    monkeypatch.setattr(chat, "run_production", fake_run)
+    tools = {tool.__name__: tool for tool in chat.OrchestratorTools(store, "director").tools()}
+
+    assert "Research failed" in json.loads(tools["plan_video"]("Nami"))["error"]
+    assert json.loads(tools["plan_video"]("Nami"))["summary"] == "planned"
+    assert "planning attempts" in json.loads(tools["plan_video"]("Nami"))["error"]
+    assert json.loads(tools["produce_video"]("Nami"))["video_ready"] is False
+    assert attempts == ["script", "script", None]
 
 
 # --- API -------------------------------------------------------------------------------

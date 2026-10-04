@@ -7,6 +7,7 @@ Models: GET https://openrouter.ai/api/v1/models?supported_parameters=tools
 
 from __future__ import annotations
 
+import base64
 import json
 import uuid
 from typing import Any
@@ -174,7 +175,10 @@ class OpenRouterClient(ProviderClient):
         kind, retryable = kind_for_status(status)
         detail = _error_detail(exc)
         lowered = detail.lower()
-        if status in (400, 404) and ("no endpoints" in lowered or "not a valid model" in lowered):
+        if status in (400, 404) and "image input" in lowered:
+            kind = "unsupported"
+            detail = f"“{model}” does not accept image input."
+        elif status in (400, 404) and ("no endpoints" in lowered or "not a valid model" in lowered):
             kind = "model_unavailable"
             detail = (
                 f"“{model}” is unavailable or does not support the features this agent needs "
@@ -301,6 +305,21 @@ def _message_payload(message: Message) -> dict[str, Any]:
                 for call in message.tool_calls
             ],
         }
+    if message.role == "user" and message.images:
+        parts: list[dict[str, Any]] = []
+        if message.content:
+            parts.append({"type": "text", "text": message.content})
+        for image in message.images:
+            if image.text:
+                parts.append({"type": "text", "text": image.text})
+            encoded = base64.b64encode(image.data).decode("ascii")
+            parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:{image.mime_type};base64,{encoded}"},
+                }
+            )
+        return {"role": "user", "content": parts}
     return {"role": message.role, "content": message.content}
 
 

@@ -2893,6 +2893,11 @@ img.player {
   color: var(--warn);
 }
 
+.tag-danger {
+  border-color: var(--danger-line);
+  color: var(--danger);
+}
+
 .narration-section {
   display: grid;
   gap: var(--space-3);
@@ -3811,9 +3816,69 @@ button.wizard-step-button:hover {
   margin-top: 4px;
 }
 
-.scene-search {
+.scene-search,
+.scene-alternatives {
   grid-column: 1 / -1;
   margin-top: var(--space-2);
+}
+
+.scene-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.scene-title .tag .spinner {
+  width: 10px;
+  height: 10px;
+}
+
+.scene-brief summary,
+.scene-alternatives > summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.scene-brief summary:focus-visible,
+.scene-alternatives > summary:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm, 6px);
+}
+
+.scene-alternatives > summary {
+  margin-bottom: var(--space-2);
+  font-size: var(--fs-xs);
+}
+
+.brief-list {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0 0;
+}
+
+.brief-list > div {
+  display: grid;
+  grid-template-columns: 7.5em 1fr;
+  gap: var(--space-2);
+}
+
+.brief-list dt {
+  color: var(--text-faint);
+}
+
+.brief-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.brief-searches,
+.candidate-reasons {
+  margin: 4px 0 0;
+  padding-left: 1.1em;
+  color: var(--text-muted);
 }
 
 .image-search-form {
@@ -3830,6 +3895,19 @@ button.wizard-step-button:hover {
 .image-search-row input {
   flex: 1 1 160px;
   min-width: 0;
+}
+
+.google-assist {
+  display: grid;
+  gap: var(--space-2);
+  justify-items: start;
+  padding: var(--space-3);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+}
+
+.google-assist[hidden] {
+  display: none;
 }
 
 .candidate-grid {

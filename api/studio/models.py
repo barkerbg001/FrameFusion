@@ -39,6 +39,7 @@ class GenerationJob(models.Model):
         AGENT = "agent", "Single agent"
         RENDER = "render", "Render"
         NARRATION = "narration", "Narration"
+        IMAGE_CHECK = "image_check", "Image check"
 
     class Status(models.TextChoices):
         QUEUED = "queued", "Queued"

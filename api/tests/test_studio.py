@@ -343,7 +343,8 @@ def test_agent_registry_and_status(client: APIClient) -> None:
     specialists = {s["id"]: s for s in agents["specialists"]}
     assert set(specialists) == {"research", "script", "visual", "ideas", "music_composer"}
     assert all(s["reports_to"] == "orchestrator" for s in specialists.values())
-    assert "download_image" in specialists["visual"]["tools"]
+    assert "download_and_register_image" in specialists["visual"]["tools"]
+    assert "report_visual_gap" in specialists["visual"]["tools"]
     assert specialists["visual"]["route"] == "production"
     assert {s["id"] for s in agents["services"]} == {"narration", "music", "renderer", "qc"}
     status = client.get("/api/agents/status").json()

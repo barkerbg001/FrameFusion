@@ -10,6 +10,7 @@ schema is the requested JSON schema, which works on every current Claude model.
 
 from __future__ import annotations
 
+import base64
 import json
 from typing import Any
 
@@ -256,6 +257,24 @@ def _messages(messages: list[Message]) -> list[dict[str, Any]]:
                 )
             if blocks:
                 append("assistant", blocks)
+        elif message.images:
+            user_blocks: list[Any] = []
+            if message.content:
+                user_blocks.append({"type": "text", "text": message.content})
+            for image in message.images:
+                if image.text:
+                    user_blocks.append({"type": "text", "text": image.text})
+                user_blocks.append(
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": image.mime_type,
+                            "data": base64.b64encode(image.data).decode("ascii"),
+                        },
+                    }
+                )
+            append("user", user_blocks)
         elif message.content:
             append("user", [{"type": "text", "text": message.content}])
 

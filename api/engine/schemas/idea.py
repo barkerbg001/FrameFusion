@@ -43,6 +43,14 @@ class VideoIdea(BaseModel):
     why_it_works: str
 
 
+class IdeaDraft(BaseModel):
+    """The part of an IdeaReport the model writes; the server fills in the rest."""
+
+    summary: str = ""
+    ideas: List[VideoIdea]
+    limitations: List[str] = Field(default_factory=list)
+
+
 class IdeaReport(BaseModel):
     topic: str
     generated_at: str

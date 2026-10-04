@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import io
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +18,7 @@ from PIL import Image
 from rest_framework.test import APIClient
 
 from engine.services.images import safe_fetch, sources
+from engine.services.images.brief import VisualBrief
 from engine.services.images.candidates import (
     ImageCandidate,
     InvalidImage,
@@ -26,11 +27,8 @@ from engine.services.images.candidates import (
 )
 from engine.services.images.toolkit import ImageToolError, ImageToolkit
 from engine.services.images.webpage import extract_candidates
-from studio import images as studio_images
 from studio.models import MediaAsset, Project
 from studio.store import DjangoProjectStore
-
-PUBLIC_IP = "93.184.216.34"
 
 Handler = Callable[[httpx.Request], httpx.Response]
 
@@ -43,27 +41,25 @@ def image_bytes(
     return buffer.getvalue()
 
 
-@pytest.fixture
-def web(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Any]]:
-    """Install a scripted web: ``routes[url] = handler``; unknown URLs return 404."""
-    state: dict[str, Any] = {"routes": {}, "requests": [], "dns": {}}
-
-    def handle(request: httpx.Request) -> httpx.Response:
-        state["requests"].append(str(request.url))
-        url = str(request.url)
-        for prefix, handler in state["routes"].items():
-            if url.startswith(prefix):
-                return handler(request)
-        return httpx.Response(404)
-
-    def resolve(host: str) -> list[str]:
-        return state["dns"].get(host, [PUBLIC_IP])
-
-    monkeypatch.setattr(safe_fetch, "TRANSPORT", httpx.MockTransport(handle))
-    monkeypatch.setattr(safe_fetch, "resolve_host", resolve)
-    monkeypatch.setattr(safe_fetch, "sleep", lambda _seconds: None)
-    studio_images.clear_cache()
-    yield state
+def brief_for(
+    scene_index: int,
+    subject: str,
+    *,
+    queries: list[str],
+    specificity: str = "generic",
+    entities: list[str] | None = None,
+    visual_type: str = "photograph",
+) -> VisualBrief:
+    return VisualBrief.model_validate(
+        {
+            "scene_index": scene_index,
+            "subject": subject,
+            "specificity": specificity,
+            "visual_type": visual_type,
+            "named_entities": [{"name": name, "kind": "landmark"} for name in entities or []],
+            "queries": [{"query": query} for query in queries],
+        }
+    )
 
 
 def jpeg_route(data: bytes | None = None) -> Handler:
@@ -318,7 +314,7 @@ def test_toolkit_downloads_documented_images_and_deduplicates(
     assert asset.checksum and asset.width == 720
     assert (output_dir / asset.file_name).is_file()
     assert not list((output_dir / "projects" / str(project.pk)).glob("*.part"))
-    assert toolkit.assignments[1]["asset_id"] == first["asset_id"]
+    assert asset.metadata.get("dhash") == first["dhash"]
 
     with pytest.raises(ImageToolError):
         toolkit.download(candidate_id, 7)
@@ -353,19 +349,25 @@ def test_tool_wrappers_report_activity_and_errors(web: dict[str, Any]) -> None:
     from engine.runtime import run_context
 
     web["routes"][sources.OPENVERSE_URL] = openverse_route()
-    toolkit = ImageToolkit(DjangoProjectStore(Project.objects.create()))
+    toolkit = ImageToolkit(
+        DjangoProjectStore(Project.objects.create()),
+        scene_count=1,
+        briefs=[brief_for(0, "tide pool", queries=["tide pool"])],
+    )
     tools = {tool.__name__: tool for tool in toolkit.tools()}
     assert set(tools) == {
-        "search_images",
-        "inspect_image_candidate",
-        "download_image",
+        "build_visual_brief",
+        "search_image_sources",
+        "inspect_image_candidates",
+        "rank_image_candidates",
+        "download_and_register_image",
         "list_project_assets",
-        "assign_scene_image",
+        "report_visual_gap",
     }
     events: list[tuple[str, dict[str, Any]]] = []
     with run_context(lambda event, data: events.append((event, data))):
-        ok = json.loads(tools["search_images"]("tide pool", "openverse"))
-        bad = json.loads(tools["download_image"]("made-up-id"))
+        ok = json.loads(tools["search_image_sources"](0, "tide pool", "openverse"))
+        bad = json.loads(tools["download_and_register_image"](0, "made-up-id"))
     assert ok["count"] == 1
     assert bad["kind"] == "not_found"
     starts = [data for event, data in events if event == "tool_start"]
@@ -420,6 +422,51 @@ def test_image_api_searches_and_downloads_by_candidate_id(
     )
     assert blocked.status_code == 422
     assert blocked.json()["code"] == "blocked_url"
+
+
+@pytest.mark.django_db
+def test_image_upload_validates_and_marks_rights_unknown(client: APIClient) -> None:
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    project = Project.objects.create()
+    good = SimpleUploadedFile("../../etc/My Photo.jpg", image_bytes(), content_type="image/jpeg")
+    response = client.post(
+        f"/api/projects/{project.pk}/images/upload", {"file": good}, format="multipart"
+    )
+    assert response.status_code == 201, response.json()
+    asset = MediaAsset.objects.get()
+    assert asset.provider == "upload"
+    assert asset.user_supplied is True and asset.rights_status == "unknown"
+    assert ".." not in asset.file_name and asset.file_name.startswith(f"projects/{project.pk}/")
+    assert asset.metadata.get("dhash")
+
+    corrupt = SimpleUploadedFile("broken.jpg", b"\xff\xd8\xff" + b"x" * 200)
+    rejected = client.post(
+        f"/api/projects/{project.pk}/images/upload", {"file": corrupt}, format="multipart"
+    )
+    assert rejected.status_code == 422
+    assert rejected.json()["code"] == "invalid_image"
+    missing = client.post(f"/api/projects/{project.pk}/images/upload", {}, format="multipart")
+    assert missing.status_code == 400
+    assert MediaAsset.objects.count() == 1
+
+
+def test_render_variant_keeps_the_whole_subject_of_wide_images(tmp_path: Path) -> None:
+    from engine.services.images.variants import VARIANT_SUFFIX, render_variant
+
+    portrait = tmp_path / "portrait.jpg"
+    portrait.write_bytes(image_bytes(720, 1280))
+    assert render_variant(portrait) == portrait
+
+    wide = tmp_path / "wide.jpg"
+    wide.write_bytes(image_bytes(1920, 800, color="red"))
+    variant = render_variant(wide)
+    assert variant.name == "wide" + VARIANT_SUFFIX
+    with Image.open(variant) as composed:
+        assert composed.size == (1080, 1920)
+        # The full-width original sits in the frame instead of being cropped to a red sliver.
+        assert composed.getpixel((5, 900))[0] > 200
+    assert wide.read_bytes() == image_bytes(1920, 800, color="red")  # original untouched
 
 
 def test_pexels_footage_downloads_go_through_safe_fetch(

@@ -11,9 +11,9 @@ from engine.agents.base import (
     get_tools_used,
     reset_tool_results,
 )
-from engine.agents.response_schema import response_schema
+from engine.agents.response_schema import generate_validated
 from engine.llm import types
-from engine.schemas.research import ResearchReport
+from engine.schemas.research import ResearchFindings, ResearchReport
 
 
 class ResearcherAgentError(Exception):
@@ -73,41 +73,35 @@ Do not choose images or write the script; other specialists handle that.
         research_data = {"tool_calls": get_tool_results()}
         tools_used = get_tools_used()
         format_prompt = f"""
-Convert the research findings below into the required response schema.
+Convert the research findings below into the required JSON object.
 
 Task: {normalized_task}
-Researched at UTC: {researched_at}
-Tools used: {", ".join(tools_used) if tools_used else "none"}
 Research draft:
 {research_response.text}
 
 Authoritative tool outputs:
-{json.dumps(research_data)}
+{json.dumps(research_data)[:20000]}
 
 Requirements:
 - Include only claims supported by the tool outputs above.
+- summary: two or three sentences answering the task.
 - verified_facts: concise, independently useful facts.
 - content_hooks: factual hooks suitable for short-form video.
 - visual_suggestions: what a viewer could be shown (subjects, places, objects).
-- recommended_media: always an empty list.
 - citations from Wikipedia source_number, title and url values when present.
 - limitations: missing data and tertiary-source limits.
 """
-        response = client.models.generate_content(
-            model=model,
-            contents=format_prompt,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=response_schema(ResearchReport),
-                temperature=0,
-            ),
+        findings = generate_validated(
+            client, format_prompt, ResearchFindings, temperature=0, model_name=model
         )
-        report = ResearchReport.model_validate_json(response.text)
-        report.task = normalized_task
-        report.researched_at = researched_at
-        report.tools_used = tools_used
-        report.recommended_media = []
-        report.research_data = research_data
+        report = ResearchReport(
+            task=normalized_task,
+            researched_at=researched_at,
+            tools_used=tools_used,
+            recommended_media=[],
+            research_data=research_data,
+            **findings.model_dump(),
+        )
         return report.model_dump()
     except ResearcherAgentError:
         raise

@@ -121,6 +121,15 @@ class ToolCall:
 
 
 @dataclass
+class ImagePart:
+    """Inline image for multimodal user messages (already validated and downscaled)."""
+
+    data: bytes
+    mime_type: str = "image/jpeg"
+    text: str = ""
+
+
+@dataclass
 class Message:
     role: Literal["user", "assistant", "tool"]
     content: str = ""
@@ -128,6 +137,7 @@ class Message:
     tool_call_id: str | None = None
     tool_name: str | None = None
     raw: Any = None
+    images: list[ImagePart] = field(default_factory=list)
 
 
 @dataclass
@@ -241,6 +251,7 @@ class GenerateContentConfig:
 types = SimpleNamespace(
     Content=Content,
     Part=Part,
+    ImagePart=ImagePart,
     GenerateContentConfig=GenerateContentConfig,
     AutomaticFunctionCallingConfig=AutomaticFunctionCallingConfig,
     FunctionCallingConfig=FunctionCallingConfig,
@@ -354,11 +365,16 @@ def _to_messages(contents: Any) -> list[Message]:
         return [Message(role="user", content=contents)]
     messages: list[Message] = []
     for content in contents:
-        text = "".join(getattr(part, "text", "") or "" for part in content.parts)
+        text = "".join(
+            getattr(part, "text", "") or ""
+            for part in content.parts
+            if not isinstance(part, ImagePart)
+        )
         if content.role in ("model", "assistant"):
             messages.append(Message(role="assistant", content=text))
         else:
-            messages.append(Message(role="user", content=text))
+            images = [part for part in content.parts if isinstance(part, ImagePart)]
+            messages.append(Message(role="user", content=text, images=images))
     return messages
 
 

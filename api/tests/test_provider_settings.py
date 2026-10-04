@@ -34,7 +34,15 @@ def test_saved_key_is_encrypted_and_masked(client: APIClient) -> None:
     assert listing["encryption_configured"] is True
     assert KEY not in json.dumps(listing)
     by_name = {p["provider"]: p for p in listing["providers"]}
-    assert set(by_name) == {"openrouter", "gemini", "anthropic", "elevenlabs", "pexels"}
+    assert set(by_name) == {
+        "openrouter",
+        "gemini",
+        "anthropic",
+        "elevenlabs",
+        "pexels",
+        "pixabay",
+        "brave",
+    }
     assert by_name["openrouter"]["configured"] is True
     assert by_name["openrouter"]["kind"] == "ai"
     assert by_name["gemini"]["status"] == "unconfigured"

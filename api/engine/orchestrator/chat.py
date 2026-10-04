@@ -24,6 +24,7 @@ from engine.services.narration import NarrationStageError
 
 MAX_TOOL_CALLS = 8
 MAX_PRODUCTIONS_PER_TURN = 1
+MAX_PLANS_PER_TURN = 2
 
 OPERATIONAL_PROMPT = """You are the FrameFusion orchestrator: the one agent the user talks to.
 You own the project. You plan vertical 9:16 short videos and coordinate specialists that
@@ -70,6 +71,7 @@ class OrchestratorTools:
         self.personality = personality
         self.production: dict[str, Any] | None = None
         self.productions = 0
+        self.plans = 0
         self.used: list[str] = []
 
     def _call(self, name: str, label: str, fn: Any) -> str:
@@ -109,8 +111,14 @@ class OrchestratorTools:
         }
 
     def _production(self, request: str, stop_after: str | None) -> dict[str, Any]:
-        if self.productions >= MAX_PRODUCTIONS_PER_TURN:
+        # Planning spends only model tokens, so a failed plan may be retried once; a full
+        # production can spend credits on narration and rendering, so it runs at most once.
+        if stop_after is None and self.productions >= MAX_PRODUCTIONS_PER_TURN:
             raise RuntimeError("Only one production run is allowed per reply.")
+        if stop_after is not None and self.plans >= MAX_PLANS_PER_TURN:
+            raise RuntimeError(
+                f"Only {MAX_PLANS_PER_TURN} planning attempts are allowed per reply."
+            )
         task, context = request.strip(), ""
         if not task:
             brief = self.store.latest_task("brief")
@@ -118,7 +126,10 @@ class OrchestratorTools:
                 raise ValueError("There is no plan yet. Describe the video first.")
             task = str(brief.inputs["task"])
             context = str(brief.inputs.get("context") or "")
-        self.productions += 1
+        if stop_after is None:
+            self.productions += 1
+        else:
+            self.plans += 1
         result = run_production(
             self.store,
             ProductionRequest(task=task, context=context, stop_after=stop_after),  # type: ignore[arg-type]

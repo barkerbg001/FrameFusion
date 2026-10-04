@@ -22,7 +22,8 @@ import httpx
 
 from engine.runtime import check_cancelled
 
-USER_AGENT = "FrameFusion/1.0 (local video studio; image research)"
+# Wikimedia requires a descriptive agent with contact details.
+USER_AGENT = "FrameFusion/1.0 (+https://github.com/barkerbg001/FrameFusion; local video studio)"
 ALLOWED_SCHEMES = {"http", "https"}
 ALLOWED_PORTS = {None, 80, 443}
 MAX_REDIRECTS = 4

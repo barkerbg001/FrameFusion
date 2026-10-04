@@ -10,14 +10,21 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, Literal
 
-Service = Literal["elevenlabs", "pexels"]
+Service = Literal["elevenlabs", "pexels", "pixabay", "brave"]
 
-SERVICE_LABELS: dict[str, str] = {"elevenlabs": "ElevenLabs", "pexels": "Pexels"}
+SERVICE_LABELS: dict[str, str] = {
+    "elevenlabs": "ElevenLabs",
+    "pexels": "Pexels",
+    "pixabay": "Pixabay",
+    "brave": "Brave Search",
+}
 ELEVENLABS_HINT = "Add an ElevenLabs API key in Settings → Narration"
 SETUP_HINT: dict[str, str] = {
     "elevenlabs": "Add an ElevenLabs API key in Settings → Narration for ElevenLabs voices "
     "and AI music.",
     "pexels": "Add a Pexels API key in Settings → Stock media for stock footage.",
+    "pixabay": "Add a Pixabay API key in Settings → Stock media to search Pixabay images.",
+    "brave": "Add a Brave Search API key in Settings → Stock media to discover web images.",
 }
 
 KeyLookup = Callable[[str], str | None]

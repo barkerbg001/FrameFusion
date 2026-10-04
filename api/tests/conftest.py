@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from cryptography.fernet import Fernet
 from rest_framework.test import APIClient
@@ -32,6 +33,41 @@ def _framefusion_settings(settings: Any, tmp_path: Path, monkeypatch: pytest.Mon
 
     services._model_cache.clear()
     monkeypatch.setattr(edge_tts_client, "_voice_cache", None)
+
+
+PUBLIC_IP = "93.184.216.34"
+
+
+@pytest.fixture
+def web(monkeypatch: pytest.MonkeyPatch) -> Iterator[dict[str, Any]]:
+    """Install a scripted web: ``routes[url] = handler``; unknown URLs return 404.
+
+    Routes match by prefix in insertion order, and DNS resolves to a public address
+    unless ``dns[host]`` says otherwise, so nothing touches the network.
+    """
+    from engine.services.images import safe_fetch, sources
+    from studio import images as studio_images
+
+    state: dict[str, Any] = {"routes": {}, "requests": [], "dns": {}, "headers": []}
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        state["requests"].append(str(request.url))
+        state["headers"].append(dict(request.headers))
+        url = str(request.url)
+        for prefix, handler in state["routes"].items():
+            if url.startswith(prefix):
+                return handler(request)
+        return httpx.Response(404)
+
+    def resolve(host: str) -> list[str]:
+        return state["dns"].get(host, [PUBLIC_IP])
+
+    monkeypatch.setattr(safe_fetch, "TRANSPORT", httpx.MockTransport(handle))
+    monkeypatch.setattr(safe_fetch, "resolve_host", resolve)
+    monkeypatch.setattr(safe_fetch, "sleep", lambda _seconds: None)
+    studio_images.clear_cache()
+    sources.clear_caches()
+    yield state
 
 
 @pytest.fixture
