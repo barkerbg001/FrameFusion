@@ -26,6 +26,6 @@
     "ci": "npm run build && npm run lint:api && node scripts/run-api-tool.mjs ruff format --check . && npm run typecheck:api && npm run check:migrations && npm run test:api"
   },
   "devDependencies": {
-    "concurrently": "^10.0.5"
+    "concurrently": "^10.0.6"
   }
 }
